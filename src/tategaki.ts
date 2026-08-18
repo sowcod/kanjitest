@@ -1,10 +1,22 @@
 import type { CanvasRenderingContext2D } from 'canvas';
+import { parse } from './parser';
+import type { Segment } from './parser';
 
 /**
  * 縦書き描画ライブラリ
  *
  * 座標系: Canvas 2D と同じく左上原点。
  * x, y は描画ブロックの「右上」を指定する（縦書きの起点）。
+ *
+ * 列レイアウト（右→左）:
+ *
+ *   ←─ 列幅 ──→
+ *   [ルビ][本文字]
+ *              ↑ x（本文字の右端）
+ *
+ * 本文字中心 charCx = x - fontSize/2
+ * ルビ・括弧は x より右（大きいX値）に描画する。
+ * fillTextBlock は列幅ぶん左（小さいX値）に currentX を進める。
  */
 
 // 90度回転が必要な文字（括弧・ダッシュ類）
@@ -43,16 +55,16 @@ export interface TategakiOptions {
   color?: string;
   /** ふりがなサイズ（本文フォントサイズの倍数）。デフォルト: 0.5 */
   rubyRatio?: number;
-}
-
-interface Segment {
-  char: string;
-  /** グループのルビ文字列（グループ先頭文字のみ非null、それ以外null） */
-  ruby: string | null;
-  /** グループ内の何文字目か (0始まり) */
-  rubyIndex: number;
-  /** グループの本文字数 */
-  rubyTotal: number;
+  /**
+   * 書き取り枠の1辺サイズ（px）。
+   * デフォルト: fontSize * 2.5
+   */
+  boxSize?: number;
+  /**
+   * true のとき枠内の文字・ルビをすべて表示する（解答例印刷用）。
+   * デフォルト: false（テスト用・空欄）
+   */
+  showAnswer?: boolean;
 }
 
 export class Tategaki {
@@ -63,6 +75,8 @@ export class Tategaki {
   private readonly color: string;
   private readonly rubyRatio: number;
   private readonly _fontSize: number;
+  private readonly boxSize: number;
+  private readonly showAnswer: boolean;
 
   constructor(ctx: CanvasRenderingContext2D, options: TategakiOptions = {}) {
     this.ctx = ctx;
@@ -72,6 +86,8 @@ export class Tategaki {
     this.color = options.color ?? '#000000';
     this.rubyRatio = options.rubyRatio ?? 0.5;
     this._fontSize = this._parseFontSize(this.font);
+    this.boxSize = options.boxSize ?? this._fontSize * 2.5;
+    this.showAnswer = options.showAnswer ?? false;
   }
 
   /** fontプロパティ文字列からフォントサイズ(px)を抽出する */
@@ -86,48 +102,7 @@ export class Tategaki {
   }
 
   /**
-   * テキストをパースしてセグメント配列に変換する。
-   *
-   * ふりがな記法:
-   *   1文字: 漢字[かんじ]
-   *   複数文字グループ: {明日}[あした]
-   */
-  private _parseRuby(text: string): Segment[] {
-    const segments: Segment[] = [];
-    // {グループ}[ruby] / 1文字[ruby] / ルビなし文字 の3パターン
-    const re = /\{([^}]+)\}\[([^\]]+)\]|(.)\[([^\]]+)\]|(.)/gu;
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(text)) !== null) {
-      if (match[1] !== undefined) {
-        // {グループ}[ruby]: 複数文字グループルビ
-        const base = [...match[1]];
-        const ruby = match[2];
-        for (let i = 0; i < base.length; i++) {
-          segments.push({
-            char: base[i],
-            ruby: i === 0 ? ruby : null,
-            rubyIndex: i,
-            rubyTotal: base.length,
-          });
-        }
-      } else if (match[3] !== undefined) {
-        // 1文字[ruby]: 1文字ルビ
-        segments.push({
-          char: match[3],
-          ruby: match[4],
-          rubyIndex: 0,
-          rubyTotal: 1,
-        });
-      } else {
-        // ルビなし1文字
-        segments.push({ char: match[5], ruby: null, rubyIndex: 0, rubyTotal: 1 });
-      }
-    }
-    return segments;
-  }
-
-  /**
-   * 1文字を縦書きで描画する内部メソッド
+   * 1文字を縦書きで描画する。
    * @param ch       - 1文字
    * @param cx       - 文字セルの中心X
    * @param cy       - 文字セルの中心Y
@@ -142,16 +117,13 @@ export class Tategaki {
     ctx.textBaseline = 'middle';
 
     if (ROTATE_CHARS.has(ch)) {
-      // 90度回転して描画
       ctx.translate(cx, cy);
       ctx.rotate(Math.PI / 2);
       ctx.fillText(ch, 0, 0);
     } else if (PUNCTUATION_CHARS.has(ch)) {
-      // 句読点: グリフが左下基準のため右端に寄せ、セルの上端近くに配置する
       ctx.textAlign = 'left';
       ctx.fillText(ch, cx + fontSize * 0.5 - fontSize * 0.1, cy - fontSize * 0.7);
     } else if (SMALL_CHARS.has(ch)) {
-      // 小文字: 中央揃えのまま右上にシフト
       ctx.fillText(ch, cx + fontSize * 0.1, cy - fontSize * 0.1);
     } else {
       ctx.fillText(ch, cx, cy);
@@ -160,49 +132,15 @@ export class Tategaki {
   }
 
   /**
-   * 1列（1行）を縦書きで描画する。
-   * x, y は列の右上を指定。
+   * ルビを描画する（本文字中心X基準）。
+   * ルビは charCx + fontSize/2 より右（= x より右）に描画する。
    *
-   * @param text  - テキスト（ふりがな記法可: 漢字[かんじ]）
-   * @param x     - 列右上のX座標
-   * @param y     - 列右上のY座標
-   */
-  fillText(text: string, x: number, y: number): void {
-    const fontSize = this._fontSize;
-    const rubySize = fontSize * this.rubyRatio;
-    const step = fontSize * this.lineHeight;
-
-    // ふりがながある場合、列幅が広がる
-    const segments = this._parseRuby(text);
-    const hasRuby = segments.some(s => s.ruby !== null);
-    const rubyOffset = hasRuby ? rubySize * 1.2 : 0;
-
-    // 本文の中心X（ふりがなの分だけ左にずらす）
-    const charCx = x - rubyOffset - fontSize / 2;
-
-    let currentY = y + fontSize / 2;
-
-    for (const seg of segments) {
-      this._drawChar(seg.char, charCx, currentY, fontSize);
-
-      if (seg.ruby !== null) {
-        // グループ全体の縦幅の中央にルビを均等配置する
-        const groupHeight = step * seg.rubyTotal;
-        this._drawRuby(seg.ruby, charCx, currentY, groupHeight, fontSize, rubySize);
-      }
-
-      currentY += step;
-    }
-  }
-
-  /**
-   * ふりがなを描画する内部メソッド
-   * @param ruby        - ふりがな文字列
+   * @param ruby        - ルビ文字列
    * @param charCx      - 本文字の中心X
    * @param groupTopCy  - グループ先頭文字の中心Y
-   * @param groupHeight - グループ全体の縦幅（step × 文字数）
-   * @param fontSize
-   * @param rubySize
+   * @param groupHeight - グループ全体の縦幅（step × 文字数 など）
+   * @param fontSize    - グループ高さ計算の基準サイズ
+   * @param rubySize    - ルビのフォントサイズ
    */
   private _drawRuby(
     ruby: string,
@@ -212,6 +150,28 @@ export class Tategaki {
     fontSize: number,
     rubySize: number,
   ): void {
+    const rubyCx = charCx + fontSize / 2 + rubySize / 2 + 2;
+    this._drawRubyAt(ruby, rubyCx, groupTopCy, groupHeight, fontSize, rubySize);
+  }
+
+  /**
+   * ルビをX座標を直接指定して描画する。
+   *
+   * @param ruby        - ルビ文字列
+   * @param rubyCx      - ルビ列の中心X
+   * @param groupTopCy  - グループ先頭文字の中心Y
+   * @param groupHeight - グループ全体の縦幅
+   * @param refSize     - グループ高さ計算の基準サイズ（本文字サイズ or boxSize）
+   * @param rubySize    - ルビのフォントサイズ
+   */
+  private _drawRubyAt(
+    ruby: string,
+    rubyCx: number,
+    groupTopCy: number,
+    groupHeight: number,
+    refSize: number,
+    rubySize: number,
+  ): void {
     const ctx = this.ctx;
     ctx.save();
     ctx.font = this._replaceFontSize(this.font, rubySize);
@@ -219,12 +179,9 @@ export class Tategaki {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    const rubyCx = charCx + fontSize / 2 + rubySize / 2 + 2;
-
-    // グループ全体の縦幅の中央にルビ全体を均等配置する
     const rubyChars = [...ruby];
     const totalRubyHeight = rubySize * rubyChars.length;
-    const groupCenterY = groupTopCy + (groupHeight - fontSize) / 2;
+    const groupCenterY = groupTopCy + (groupHeight - refSize) / 2;
     let ry = groupCenterY - totalRubyHeight / 2 + rubySize / 2;
 
     for (const rch of rubyChars) {
@@ -235,21 +192,247 @@ export class Tategaki {
   }
 
   /**
+   * 書き取り枠（正方形 + 十字破線補助線）を1つ描画する。
+   * @param left  - 枠の左端X
+   * @param top   - 枠の上端Y
+   * @param size  - 枠の1辺サイズ
+   * @param char  - showAnswer時に枠内に描画する文字（省略時は空欄）
+   */
+  private _drawWriteBox(left: number, top: number, size: number, char?: string): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = this.color;
+
+    // 外枠（実線）
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    ctx.strokeRect(left, top, size, size);
+
+    // 十字補助線（破線）
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(left + size / 2, top);
+    ctx.lineTo(left + size / 2, top + size);
+    ctx.moveTo(left, top + size / 2);
+    ctx.lineTo(left + size, top + size / 2);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // 解答モード: 枠内に文字を描画
+    if (char !== undefined) {
+      this._drawChar(char, left + size / 2, top + size / 2, size * 0.7);
+    }
+  }
+
+  /**
+   * 縦長の大括弧を描画する（readBox / bracketBox 共通）。
+   * `[` を90度回転して上端に、`]` を90度回転して下端に描画する。
+   *
+   * @param cx     - 括弧の中心X
+   * @param topY   - 括弧の上端Y
+   * @param height - 括弧の縦幅
+   * @param size   - 括弧グリフのフォントサイズ
+   */
+  private _drawBracket(cx: number, topY: number, height: number, size: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = this._replaceFontSize(this.font, size);
+    ctx.fillStyle = this.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 上端: `[` を90度回転（時計回り）→ 上向きの横棒になる
+    ctx.save();
+    ctx.translate(cx, topY + size / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillText('[', 0, 0);
+    ctx.restore();
+
+    // 下端: `]` を90度回転（時計回り）→ 下向きの横棒になる
+    ctx.save();
+    ctx.translate(cx, topY + height - size / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillText(']', 0, 0);
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  /**
+   * Segment 1つ分の列幅を返す。
+   *
+   * 列幅の設計:
+   *   |←─── columnWidth ───→|
+   *   |←付属物→|←本体→|
+   *             ↑ 本体中心
+   *                          ↑ x（列右端）
+   *
+   * 付属物（ルビ・括弧）は本体の左側に配置し、列の外にははみ出さない。
+   * x = 列右端 = 本体右端。
+   */
+  private _segmentWidth(seg: Segment): number {
+    const fontSize = this._fontSize;
+    const rubySize = fontSize * this.rubyRatio;
+    const bracketWidth = fontSize * 2; // 括弧の列幅（横幅2倍）
+    switch (seg.kind) {
+      case 'normal':
+        return fontSize + (seg.ruby !== null ? rubySize * 1.2 : 0);
+      case 'writeBox':
+        return this.boxSize + rubySize * 1.2;
+      case 'readBox':
+        return fontSize + bracketWidth;
+      case 'bracketBox':
+        return bracketWidth + rubySize * 1.2;
+    }
+  }
+
+  /**
+   * 列幅 = 列内の全 Segment の幅の最大値。
+   */
+  private _calcColumnWidth(segments: Segment[]): number {
+    return segments.reduce((m, s) => Math.max(m, this._segmentWidth(s)), 0);
+  }
+
+  /**
+   * 1列（1行）を縦書きで描画する。
+   * x, y は列の右上を指定（列の右端が x）。
+   *
+   * 座標設計:
+   *   |←─── columnWidth ───→|
+   *   |←付属物幅→|←本体幅→|
+   *               ↑ 本体中心 = x - columnWidth + 付属物幅 + 本体幅/2
+   *                            = x - 本体幅/2 - 右余白
+   *                                              ↑ x（列右端）
+   *
+   * @param text  - テキスト（記法可）
+   * @param x     - 列右端のX座標
+   * @param y     - 列右上のY座標
+   * @returns     実際の列幅（px）
+   */
+  fillText(text: string, x: number, y: number): number {
+    const fontSize = this._fontSize;
+    const rubySize = fontSize * this.rubyRatio;
+    const step = fontSize * this.lineHeight;
+    const boxSize = this.boxSize;
+    const bracketWidth = fontSize * 2;     // 括弧の横幅（列幅計算用）
+    const bracketGlyphSize = fontSize;     // 括弧グリフのフォントサイズ（爪の大きさ）
+
+    const { segments } = parse(text);
+    const columnWidth = this._calcColumnWidth(segments);
+
+    // 列幅の設計:
+    //   |←─── columnWidth ───→|
+    //   |←本体→|←ルビ/括弧→|
+    //            ↑ 本体中心 = x - columnWidth + 本体幅/2
+    //                                           ↑ x（列右端）
+    const charCx = x - columnWidth + fontSize / 2;   // normal / readBox の本文字中心
+    const boxLeft = x - columnWidth;                  // writeBox の枠左端
+
+    let currentY = y + fontSize / 2;
+
+    for (const seg of segments) {
+      switch (seg.kind) {
+
+        case 'normal': {
+          this._drawChar(seg.char, charCx, currentY, fontSize);
+          if (seg.ruby !== null) {
+            const groupHeight = step * seg.rubyTotal;
+            // ルビは本文字の右側（本体右端 + ルビ中心）
+            const rubyCx = charCx + fontSize / 2 + rubySize * 0.6;
+            this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, fontSize, rubySize);
+          }
+          currentY += step;
+          break;
+        }
+
+        case 'writeBox': {
+          const top = currentY - boxSize / 2;
+          const charToShow = this.showAnswer ? seg.char : undefined;
+          this._drawWriteBox(boxLeft, top, boxSize, charToShow);
+
+          // ルビはグループ先頭でまとめて描画（枠の右側）
+          if (seg.ruby !== null) {
+            const groupHeight = boxSize * seg.rubyTotal;
+            // 枠右端 = boxLeft + boxSize = x - columnWidth + boxSize
+            const boxRight = boxLeft + boxSize;
+            const rubyCx = boxRight + rubySize * 0.6;
+            this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, boxSize, rubySize);
+          }
+
+          currentY += boxSize;
+          break;
+        }
+
+        case 'readBox': {
+          this._drawChar(seg.char, charCx, currentY, fontSize);
+
+          // グループ先頭でのみ括弧を描画（本文字の右側）
+          if (seg.rubyIndex === 0) {
+            const bracketHeight = fontSize * 2.5; // 縦幅: 本文字の2.5倍固定
+            // bracketTopY: グリフ半分ずらして上端に揃える
+            const bracketTopY = currentY - fontSize / 2 - bracketGlyphSize / 2;
+            // 括弧中心X = 本体右端 + bracketWidth/2
+            const bracketCx = charCx + fontSize / 2 + bracketWidth / 2;
+            this._drawBracket(bracketCx, bracketTopY, bracketHeight, bracketGlyphSize);
+
+            // showAnswer のときルビを括弧の右側に表示
+            if (this.showAnswer && seg.ruby !== null) {
+              const groupHeight = step * seg.rubyTotal;
+              const rubyCx = charCx + fontSize / 2 + bracketWidth + rubySize * 0.6;
+              this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, fontSize, rubySize);
+            }
+          }
+
+          currentY += step;
+          break;
+        }
+
+        case 'bracketBox': {
+          const bracketHeight = (seg.boxCount ?? 3) * boxSize;
+          const bracketTopY = currentY - boxSize / 2 - bracketGlyphSize / 2;
+          // 本体左端 = x - columnWidth、括弧中心 = 本体左端 + bracketWidth/2
+          const bracketCx = x - columnWidth + bracketWidth / 2;
+          this._drawBracket(bracketCx, bracketTopY, bracketHeight, bracketGlyphSize);
+
+          // showAnswer のとき括弧内に文字を描画
+          if (this.showAnswer) {
+            const chars = [...seg.char];
+            const charStep = bracketHeight / Math.max(chars.length, 1);
+            for (let ci = 0; ci < chars.length; ci++) {
+              const cy = bracketTopY + charStep * ci + charStep / 2;
+              this._drawChar(chars[ci], bracketCx, cy, fontSize * 0.8);
+            }
+          }
+
+          // ルビは括弧の右側
+          if (seg.ruby !== null) {
+            const rubyCx = x - columnWidth + bracketWidth + rubySize * 0.6;
+            this._drawRubyAt(seg.ruby, rubyCx, bracketTopY, bracketHeight, boxSize, rubySize);
+          }
+
+          currentY += bracketHeight;
+          break;
+        }
+      }
+    }
+
+    return columnWidth;
+  }
+
+  /**
    * 複数列を右から左へ縦書きで描画する。
    * x, y は最右列の右上を指定。
    *
-   * @param lines  - 列ごとのテキスト配列（ふりがな記法可）
+   * @param lines  - 列ごとのテキスト配列（記法可）
    * @param x      - 最右列の右上X座標
    * @param y      - 最右列の右上Y座標
    */
   fillTextBlock(lines: string[], x: number, y: number): void {
-    const fontSize = this._fontSize;
-    const columnStep = fontSize * this.columnGap;
-
     let currentX = x;
     for (const line of lines) {
-      this.fillText(line, currentX, y);
-      currentX -= columnStep;
+      const columnWidth = this.fillText(line, currentX, y);
+      currentX -= columnWidth;
     }
   }
 

@@ -298,4 +298,4 @@ private _drawBracket(rightX: number, topY: number, height: number): void
 - [x] 記法仕様の定義：完了
 - [x] パーサー設計：完了
 - [x] 描画処理設計：完了
-- [ ] 実装：未着手
+- [x] 実装：完了
