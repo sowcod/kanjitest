@@ -242,22 +242,22 @@ export class Tategaki {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // 上端: `[` を90度回転（時計回り）
-    // グリフ中心を topY に置くことで、爪が topY より上にはみ出しつつ
-    // 縦棒部分が topY から下向きに伸びる形になる
+    // 上端: `〔` を90度回転（時計回り）
+    // グリフ中心を topY - size/2 に置くことで、爪が topY の外側（上）に出て
+    // 縦棒の端が topY にぴったり揃う
     ctx.save();
-    ctx.translate(cx, topY);
+    ctx.translate(cx, topY - size / 2);
     ctx.rotate(Math.PI / 2);
-    ctx.fillText('[', 0, 0);
+    ctx.fillText('〔', 0, 0);
     ctx.restore();
 
-    // 下端: `]` を90度回転（時計回り）
-    // グリフ中心を topY+height に置くことで、爪が topY+height より下にはみ出しつつ
-    // 縦棒部分が topY+height から上向きに伸びる形になる
+    // 下端: `〕` を90度回転（時計回り）
+    // グリフ中心を topY+height + size/2 に置くことで、爪が topY+height の外側（下）に出て
+    // 縦棒の端が topY+height にぴったり揃う
     ctx.save();
-    ctx.translate(cx, topY + height);
+    ctx.translate(cx, topY + height + size / 2);
     ctx.rotate(Math.PI / 2);
-    ctx.fillText(']', 0, 0);
+    ctx.fillText('〕', 0, 0);
     ctx.restore();
 
     ctx.restore();
@@ -278,7 +278,7 @@ export class Tategaki {
   private _segmentWidth(seg: Segment): number {
     const fontSize = this._fontSize;
     const rubySize = fontSize * this.rubyRatio;
-    const bracketWidth = fontSize * 2; // 括弧の列幅（横幅2倍）
+    const bracketWidth = fontSize * 3; // 括弧の列幅（横幅3倍）
     switch (seg.kind) {
       case 'normal':
         return fontSize + (seg.ruby !== null ? rubySize * 1.2 : 0);
@@ -319,8 +319,8 @@ export class Tategaki {
     const rubySize = fontSize * this.rubyRatio;
     const step = fontSize * this.lineHeight;
     const boxSize = this.boxSize;
-    const bracketWidth = fontSize * 2;     // 括弧の横幅（列幅計算用）
-    const bracketGlyphSize = fontSize;     // 括弧グリフのフォントサイズ（爪の大きさ）
+    const bracketWidth = fontSize * 3;     // 括弧の横幅（列幅計算用）
+    const bracketGlyphSize = fontSize * 1.5;     // 括弧グリフのフォントサイズ（爪の大きさ）
 
     const { segments } = parse(text);
     const columnWidth = this._calcColumnWidth(segments);
