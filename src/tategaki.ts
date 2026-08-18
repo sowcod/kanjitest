@@ -371,8 +371,22 @@ export class Tategaki {
         case 'readBox': {
           this._drawChar(seg.char, charCx, currentY, fontSize);
 
-          // グループ先頭でのみ括弧を描画（本文字の右側）
+          // グループ先頭でのみ縦線・括弧を描画（本文字の右側）
           if (seg.rubyIndex === 0) {
+            // 漢字の右端に縦線（漢字文字数分の長さ）
+            const lineX = charCx + fontSize / 2 + 3;
+            const lineTopY = currentY - fontSize / 2;
+            const lineBottomY = lineTopY + step * seg.rubyTotal;
+            const ctx = this.ctx;
+            ctx.save();
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(lineX, lineTopY);
+            ctx.lineTo(lineX, lineBottomY);
+            ctx.stroke();
+            ctx.restore();
             const bracketHeight = fontSize * 3 * seg.rubyTotal; // 縦幅: 本文字の3倍 × 文字数
             // bracketTopY: 本文字の上端に揃える
             const bracketTopY = currentY - fontSize / 2;
