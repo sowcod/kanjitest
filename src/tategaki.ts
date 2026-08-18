@@ -235,7 +235,7 @@ export class Tategaki {
    * @param height - 括弧の縦幅
    * @param size   - 括弧グリフのフォントサイズ
    */
-  private _drawBracket(cx: number, topY: number, height: number, size: number): void {
+  private _drawReadBracket(cx: number, topY: number, height: number, size: number): void {
     const ctx = this.ctx;
     ctx.save();
     ctx.font = this._replaceFontSize(this.font, size);
@@ -243,20 +243,42 @@ export class Tategaki {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // 上端: `〔` を90度回転（時計回り）
-    // グリフ中心を topY - size/2 に置くことで、爪が topY の外側（上）に出て
-    // 縦棒の端が topY にぴったり揃う
+    // 上端: グリフ中心を topY の外側に置き、爪が topY の外側（上）に出る
     ctx.save();
     ctx.translate(cx, topY - size / 2);
     ctx.rotate(Math.PI / 2);
     ctx.fillText('〔', 0, 0);
     ctx.restore();
 
-    // 下端: `〕` を90度回転（時計回り）
-    // グリフ中心を topY+height + size/2 に置くことで、爪が topY+height の外側（下）に出て
-    // 縦棒の端が topY+height にぴったり揃う
+    // 下端: グリフ中心を topY+height の外側に置き、爪が topY+height の外側（下）に出る
     ctx.save();
     ctx.translate(cx, topY + height + size / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillText('〕', 0, 0);
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  /** bracketBox 用の縦長括弧。爪が topY / topY+height の内側に収まる。 */
+  private _drawBracketBox(cx: number, topY: number, height: number, size: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = this._replaceFontSize(this.font, size);
+    ctx.fillStyle = this.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 上端: グリフ中心を topY + size/2 に置き、爪が topY の内側から始まる
+    ctx.save();
+    ctx.translate(cx, topY + size / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillText('〔', 0, 0);
+    ctx.restore();
+
+    // 下端: グリフ中心を topY+height - size/2 に置き、爪が topY+height の内側で終わる
+    ctx.save();
+    ctx.translate(cx, topY + height - size / 2);
     ctx.rotate(Math.PI / 2);
     ctx.fillText('〕', 0, 0);
     ctx.restore();
@@ -333,9 +355,14 @@ export class Tategaki {
     //                                           ↑ x（列右端）
     const boxLeft = x - columnWidth;                  // writeBox の枠左端
     const charCx = x - columnWidth + fontSize / 2;   // readBox の本文字中心
-    // normal 文字の中心X: 列内に writeBox があれば boxSize の中央、なければ fontSize の中央
+    // normal 文字の中心X: 列内の種類に応じて本体幅の中央に揃える
     const hasWriteBox = segments.some(s => s.kind === 'writeBox');
-    const normalCx = hasWriteBox ? boxLeft + boxSize / 2 : charCx;
+    const hasBracketBox = segments.some(s => s.kind === 'bracketBox');
+    const normalCx = hasWriteBox
+      ? boxLeft + boxSize / 2
+      : hasBracketBox
+        ? boxLeft + bracketWidth / 2
+        : charCx;
 
     // currentY は常に「次のセグメントの上端」
     let currentY = y;
@@ -395,7 +422,7 @@ export class Tategaki {
             const bracketHeight = fontSize * 3 * seg.rubyTotal; // 縦幅: 本文字の3倍 × 文字数
             // 括弧中心X = 本体右端 + bracketWidth/2
             const bracketCx = charCx + fontSize / 2 + bracketWidth / 2;
-            this._drawBracket(bracketCx, currentY, bracketHeight, bracketGlyphSize);
+            this._drawReadBracket(bracketCx, currentY, bracketHeight, bracketGlyphSize);
 
             // showAnswer のときルビを括弧の右側に表示
             if (this.showAnswer && seg.ruby !== null) {
@@ -413,7 +440,7 @@ export class Tategaki {
           const bracketHeight = (seg.boxCount ?? 3) * boxSize;
           // currentY = 括弧の上端
           const bracketCx = x - columnWidth + bracketWidth / 2;
-          this._drawBracket(bracketCx, currentY, bracketHeight, bracketGlyphSize);
+          this._drawBracketBox(bracketCx, currentY, bracketHeight, bracketGlyphSize);
 
           // showAnswer のとき括弧内に文字を描画
           if (this.showAnswer) {
