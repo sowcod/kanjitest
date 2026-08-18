@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+    <script>
+        function drawCanvas() {
+            var canvas = document.getElementById("mycanvas");
+            canvas.width = 300 * 300 / 72;
+            canvas.height = 300 * 300 / 72;
+            canvas.style.width = '300px';
+            canvas.style.height = '300px';
+
+            // フォント名の直接指定で教科書体を使用する検証
+            var ctx = canvas.getContext("2d");
+            ctx.scale(300/72, 300/72);
+            ctx.font = "12pt serif"
+            ctx.fillText("これは明朝体です", 0, 15);
+            ctx.font = "12pt '游教科書体'"
+            ctx.fillText("これは教科書体です", 0, 38);
+
+        }
+    </script>
+    <body onload="drawCanvas();">
+        <div style="font-size: 12pt; font-family: '游教科書体';">これは試験です</div>
+        <canvas id="mycanvas" style="border: 1px solid black;"></canvas>
+    </body>
+</html>

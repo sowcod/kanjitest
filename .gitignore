@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Generated files
+output.pdf
+*.pdf
+
+# OS
+.DS_Store
+
+# Editor
+.bob/
