@@ -217,9 +217,85 @@ export function parse(text: string): ParseResult
 
 ---
 
+## 描画処理設計
+
+### 方針
+
+- `src/tategaki.ts` の `Tategaki` クラスを拡張する
+- 内部で `parse()` を呼び出し、`Segment[]` をループして描画する
+- 既存の `_parseRuby()` は `parse()` に置き換える
+- `fillText()` の戻り値を `void` → `number`（実際の列幅）に変更する
+- `fillTextBlock()` は `fillText()` の戻り値を使って次の列位置を決める
+
+### 描画オプションの追加
+
+テスト用（空欄）と解答例用（文字入り）を切り替えるオプションを `TategakiOptions` に追加する。
+
+```ts
+interface TategakiOptions {
+  // ...既存オプション...
+  boxSize?: number      // 書き取り枠の1辺サイズ（px）。デフォルト: fontSize * 2.5
+  showAnswer?: boolean  // true のとき枠内の文字・ルビをすべて表示する。デフォルト: false
+}
+```
+
+### 各 Segment kind の描画内容
+
+| kind | 本体の描画 | 右側の描画 |
+|---|---|---|
+| `normal` | `_drawChar()` で文字を描画 | ルビがあれば `_drawRuby()` |
+| `writeBox` | `boxSize` の正方形枠（実線）＋十字補助線（破線）を文字数分縦に並べる。`showAnswer: true` のとき枠内に文字も描画 | ルビを `_drawRuby()` で描画（`showAnswer` に関わらず常に表示） |
+| `readBox` | `_drawChar()` で文字を描画（常に表示） | 縦長大括弧（空白のみ）。`showAnswer: true` のときルビも表示 |
+| `bracketBox` | なし（文字は印刷しない）。`showAnswer: true` のとき縦長大括弧の中に文字を描画 | 縦長大括弧 ＋ ルビを `_drawRuby()` で描画 |
+
+### 列幅の計算
+
+`fillText()` はループ終了後に**その列の実際の横幅**を返す。列幅は列内の全 Segment が必要とする横幅の最大値。
+
+| kind | 列幅の計算式 |
+|---|---|
+| `normal`（ルビなし） | `fontSize` |
+| `normal`（ルビあり） | `fontSize + rubySize × 1.2` |
+| `writeBox` | `boxSize + rubySize × 1.2` |
+| `readBox` | `fontSize + bracketWidth` |
+| `bracketBox` | `bracketWidth + rubySize × 1.2` |
+
+`bracketWidth` は大括弧の描画幅（定数。`fontSize × 0.4` 程度を想定）。
+
+### `fillText()` / `fillTextBlock()` のシグネチャ変更
+
+```ts
+// 変更前
+fillText(text: string, x: number, y: number): void
+
+// 変更後
+fillText(text: string, x: number, y: number): number  // 戻り値: 実際の列幅(px)
+```
+
+```ts
+// fillTextBlock: 変更なし（内部で fillText の戻り値を使うように変更）
+fillTextBlock(lines: string[], x: number, y: number): void
+```
+
+### 新規追加メソッド
+
+```ts
+// writeBox の1枠を描画する
+private _drawWriteBox(cx: number, cy: number, boxSize: number, char?: string): void
+
+// readBox / bracketBox の縦長大括弧を描画する
+private _drawBracket(rightX: number, topY: number, height: number): void
+```
+
+`_drawWriteBox()` は正方形の実線外枠と十字の破線補助線を描く。`char` が渡された場合（`showAnswer: true` 時）は枠内に文字も描画する。
+
+`_drawBracket()` は縦長の大括弧を描く。`readBox` と `bracketBox` の両方で使用する。
+
+---
+
 ## ステータス
 
 - [x] 記法仕様の定義：完了
 - [x] パーサー設計：完了
-- [ ] 描画処理設計：未着手
+- [x] 描画処理設計：完了
 - [ ] 実装：未着手
