@@ -103,9 +103,123 @@
 
 ---
 
+## パーサー設計
+
+### 方針
+
+- パーサーを `src/parser.ts` として**Canvas依存のない独立モジュール**に分離する
+- 将来のエディタ（ブラウザ上）からパーサーだけをimportできるようにする
+- 描画処理（`src/tategaki.ts`）はパーサーの出力（`Segment[]`）を受け取って描画する
+
+### アーキテクチャ
+
+```
+src/parser.ts   ← Canvas非依存。エディタからも使える
+src/tategaki.ts ← parser.ts の出力を受け取って描画
+```
+
+### 2段構成：Tokenizer → Parser
+
+正規表現1本のアプローチでは壊れた記法がサイレントに無視されるため、**位置情報付きトークン列に分割してからパース**する2段構成を採用する。
+
+#### Stage 1: Tokenizer
+
+入力文字列を以下のトークン種別に分割する。各トークンは入力文字列中の位置情報を持つ。
+
+| TokenKind | マッチパターン | 例 |
+|---|---|---|
+| `ANGLE_GROUP` | `<文字列>` | `<今日>` |
+| `CURLY2_GROUP` | `{{文字列}}` | `{{書く}}` |
+| `CURLY1_GROUP` | `{文字列}` | `{明日}` |
+| `RUBY2` | `[[文字列]]` | `[[かんじ]]` |
+| `RUBY1` | `[文字列]` | `[かんじ]` |
+| `CHAR` | それ以外の1文字 | `太`、`。` |
+
+```ts
+interface Token {
+  kind: TokenKind
+  text: string   // マッチした生テキスト（括弧を含む）
+  value: string  // 括弧を除いた中身
+  offset: number // 入力文字列中の開始位置（文字単位）
+  length: number // トークンの長さ（文字単位）
+}
+```
+
+#### Stage 2: Parser
+
+トークン列を順に読んで `Segment[]` と `ParseError[]` を生成する。
+
+**合法なトークン列の組み合わせ：**
+
+| トークン列 | 解釈 | Segment kind |
+|---|---|---|
+| `CHAR` | ルビなし通常文字 | `normal` |
+| `CHAR` `RUBY1` | 1文字通常ルビ | `normal` |
+| `CURLY1_GROUP` `RUBY1` | グループ通常ルビ | `normal` |
+| `ANGLE_GROUP` `RUBY1` | 書き取り枠 | `writeBox` |
+| `CHAR` `RUBY2` | 1文字読み取り枠 | `readBox` |
+| `CURLY1_GROUP` `RUBY2` | グループ読み取り枠 | `readBox` |
+| `CURLY2_GROUP` `RUBY1` | 送り仮名付き書き取り枠 | `bracketBox` |
+
+**エラーとなるケース（例）：**
+
+- `RUBY1` / `RUBY2` の直前にベース（`CHAR` / `CURLY1_GROUP` / `ANGLE_GROUP` / `CURLY2_GROUP`）がない
+- `ANGLE_GROUP` の直後に `RUBY1` がない
+- `CURLY2_GROUP` の直後に `RUBY1` がない
+- `CURLY1_GROUP` の直後に `RUBY1` も `RUBY2` もない
+
+### Segment 型の拡張
+
+```ts
+type SegmentKind = 'normal' | 'writeBox' | 'readBox' | 'bracketBox'
+
+interface Segment {
+  kind: SegmentKind
+  char: string        // 常に元の文字を保持する（描画時に印刷するかどうかはオプションで制御）
+                      // bracketBox は複数文字をまとめて保持する（例: '書く'）
+  ruby: string | null // 常に元のルビを保持する（描画時に印刷するかどうかはオプションで制御）
+  rubyIndex: number   // グループ内の何文字目か（0始まり）
+  rubyTotal: number   // グループの総文字数
+  boxCount?: number   // bracketBox のみ: 括弧の縦幅を決める枠数（閾値テーブルから算出）
+}
+```
+
+**設計方針：パーサーは情報を捨てない**
+
+- `writeBox` の `char`・`readBox` の `ruby`・`bracketBox` の `char` はすべて元の値を保持する
+- 描画時に「枠内の文字を印刷するか」「ルビを表示するか」をオプションで切り替える
+- これにより、テスト用（空欄）と解答例用（文字入り）を同じ `Segment[]` から生成できる
+
+### パース結果の型
+
+```ts
+interface ParseResult {
+  segments: Segment[]
+  errors: ParseError[]
+}
+
+interface ParseError {
+  offset: number  // エラー箇所の開始位置（文字単位）
+  length: number  // エラー箇所の長さ
+  message: string // 例: "[[...]] の前に文字またはグループがありません"
+}
+```
+
+### エクスポートするAPI（src/parser.ts）
+
+```ts
+export type { Token, TokenKind, Segment, SegmentKind, ParseResult, ParseError }
+export function tokenize(text: string): Token[]
+export function parse(text: string): ParseResult
+```
+
+`tokenize` を公開することで、エディタがトークン単位のシンタックスハイライトにも使えるようにする。
+
+---
+
 ## ステータス
 
 - [x] 記法仕様の定義：完了
-- [ ] パーサー設計：未着手
+- [x] パーサー設計：完了
 - [ ] 描画処理設計：未着手
 - [ ] 実装：未着手
