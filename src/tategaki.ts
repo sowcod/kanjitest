@@ -171,6 +171,7 @@ export class Tategaki {
     groupHeight: number,
     refSize: number,
     rubySize: number,
+    rubyStep: number = rubySize,
   ): void {
     const ctx = this.ctx;
     ctx.save();
@@ -180,13 +181,13 @@ export class Tategaki {
     ctx.textBaseline = 'middle';
 
     const rubyChars = [...ruby];
-    const totalRubyHeight = rubySize * rubyChars.length;
+    const totalRubyHeight = rubyStep * rubyChars.length;
     const groupCenterY = groupTopCy + (groupHeight - refSize) / 2;
-    let ry = groupCenterY - totalRubyHeight / 2 + rubySize / 2;
+    let ry = groupCenterY - totalRubyHeight / 2 + rubyStep / 2;
 
     for (const rch of rubyChars) {
       ctx.fillText(rch, rubyCx, ry);
-      ry += rubySize;
+      ry += rubyStep;
     }
     ctx.restore();
   }
@@ -330,38 +331,42 @@ export class Tategaki {
     //   |←本体→|←ルビ/括弧→|
     //            ↑ 本体中心 = x - columnWidth + 本体幅/2
     //                                           ↑ x（列右端）
-    const charCx = x - columnWidth + fontSize / 2;   // normal / readBox の本文字中心
     const boxLeft = x - columnWidth;                  // writeBox の枠左端
+    const charCx = x - columnWidth + fontSize / 2;   // readBox の本文字中心
+    // normal 文字の中心X: 列内に writeBox があれば boxSize の中央、なければ fontSize の中央
+    const hasWriteBox = segments.some(s => s.kind === 'writeBox');
+    const normalCx = hasWriteBox ? boxLeft + boxSize / 2 : charCx;
 
-    let currentY = y + fontSize / 2;
+    // currentY は常に「次のセグメントの上端」
+    let currentY = y;
 
     for (const seg of segments) {
       switch (seg.kind) {
 
         case 'normal': {
-          this._drawChar(seg.char, charCx, currentY, fontSize);
+          const cy = currentY + fontSize / 2;
+          this._drawChar(seg.char, normalCx, cy, fontSize);
           if (seg.ruby !== null) {
             const groupHeight = step * seg.rubyTotal;
-            // ルビは本文字の右側（本体右端 + ルビ中心）
-            const rubyCx = charCx + fontSize / 2 + rubySize * 0.6;
-            this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, fontSize, rubySize);
+            const rubyCx = normalCx + fontSize / 2 + rubySize * 0.6;
+            this._drawRubyAt(seg.ruby, rubyCx, cy, groupHeight, fontSize, rubySize);
           }
           currentY += step;
           break;
         }
 
         case 'writeBox': {
-          const top = currentY - boxSize / 2;
+          // currentY = 枠の上端
           const charToShow = this.showAnswer ? seg.char : undefined;
-          this._drawWriteBox(boxLeft, top, boxSize, charToShow);
+          this._drawWriteBox(boxLeft, currentY, boxSize, charToShow);
 
           // ルビはグループ先頭でまとめて描画（枠の右側）
           if (seg.ruby !== null) {
             const groupHeight = boxSize * seg.rubyTotal;
-            // 枠右端 = boxLeft + boxSize = x - columnWidth + boxSize
             const boxRight = boxLeft + boxSize;
             const rubyCx = boxRight + rubySize * 0.6;
-            this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, boxSize, rubySize);
+            // groupTopCy は先頭枠の中心Y。writeBox のルビは字間1.5倍
+            this._drawRubyAt(seg.ruby, rubyCx, currentY + boxSize / 2, groupHeight, boxSize, rubySize, rubySize * 1.5);
           }
 
           currentY += boxSize;
@@ -369,36 +374,34 @@ export class Tategaki {
         }
 
         case 'readBox': {
-          this._drawChar(seg.char, charCx, currentY, fontSize);
+          const cy = currentY + fontSize / 2;
+          this._drawChar(seg.char, charCx, cy, fontSize);
 
           // グループ先頭でのみ縦線・括弧を描画（本文字の右側）
           if (seg.rubyIndex === 0) {
             // 漢字の右端に縦線（漢字文字数分の長さ）
             const lineX = charCx + fontSize / 2 + 3;
-            const lineTopY = currentY - fontSize / 2;
-            const lineBottomY = lineTopY + step * seg.rubyTotal;
+            const lineBottomY = currentY + step * seg.rubyTotal;
             const ctx = this.ctx;
             ctx.save();
             ctx.strokeStyle = this.color;
             ctx.lineWidth = 1;
             ctx.setLineDash([]);
             ctx.beginPath();
-            ctx.moveTo(lineX, lineTopY);
+            ctx.moveTo(lineX, currentY);
             ctx.lineTo(lineX, lineBottomY);
             ctx.stroke();
             ctx.restore();
             const bracketHeight = fontSize * 3 * seg.rubyTotal; // 縦幅: 本文字の3倍 × 文字数
-            // bracketTopY: 本文字の上端に揃える
-            const bracketTopY = currentY - fontSize / 2;
             // 括弧中心X = 本体右端 + bracketWidth/2
             const bracketCx = charCx + fontSize / 2 + bracketWidth / 2;
-            this._drawBracket(bracketCx, bracketTopY, bracketHeight, bracketGlyphSize);
+            this._drawBracket(bracketCx, currentY, bracketHeight, bracketGlyphSize);
 
             // showAnswer のときルビを括弧の右側に表示
             if (this.showAnswer && seg.ruby !== null) {
               const groupHeight = step * seg.rubyTotal;
               const rubyCx = charCx + fontSize / 2 + bracketWidth + rubySize * 0.6;
-              this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, fontSize, rubySize);
+              this._drawRubyAt(seg.ruby, rubyCx, cy, groupHeight, fontSize, rubySize);
             }
           }
 
@@ -408,17 +411,16 @@ export class Tategaki {
 
         case 'bracketBox': {
           const bracketHeight = (seg.boxCount ?? 3) * boxSize;
-          const bracketTopY = currentY - boxSize / 2 - bracketGlyphSize / 2;
-          // 本体左端 = x - columnWidth、括弧中心 = 本体左端 + bracketWidth/2
+          // currentY = 括弧の上端
           const bracketCx = x - columnWidth + bracketWidth / 2;
-          this._drawBracket(bracketCx, bracketTopY, bracketHeight, bracketGlyphSize);
+          this._drawBracket(bracketCx, currentY, bracketHeight, bracketGlyphSize);
 
           // showAnswer のとき括弧内に文字を描画
           if (this.showAnswer) {
             const chars = [...seg.char];
             const charStep = bracketHeight / Math.max(chars.length, 1);
             for (let ci = 0; ci < chars.length; ci++) {
-              const cy = bracketTopY + charStep * ci + charStep / 2;
+              const cy = currentY + charStep * ci + charStep / 2;
               this._drawChar(chars[ci], bracketCx, cy, fontSize * 0.8);
             }
           }
@@ -426,7 +428,7 @@ export class Tategaki {
           // ルビは括弧の右側
           if (seg.ruby !== null) {
             const rubyCx = x - columnWidth + bracketWidth + rubySize * 0.6;
-            this._drawRubyAt(seg.ruby, rubyCx, bracketTopY, bracketHeight, boxSize, rubySize);
+            this._drawRubyAt(seg.ruby, rubyCx, currentY, bracketHeight, boxSize, rubySize);
           }
 
           currentY += bracketHeight;
