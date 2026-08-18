@@ -242,16 +242,20 @@ export class Tategaki {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // 上端: `[` を90度回転（時計回り）→ 上向きの横棒になる
+    // 上端: `[` を90度回転（時計回り）
+    // グリフ中心を topY に置くことで、爪が topY より上にはみ出しつつ
+    // 縦棒部分が topY から下向きに伸びる形になる
     ctx.save();
-    ctx.translate(cx, topY + size / 2);
+    ctx.translate(cx, topY);
     ctx.rotate(Math.PI / 2);
     ctx.fillText('[', 0, 0);
     ctx.restore();
 
-    // 下端: `]` を90度回転（時計回り）→ 下向きの横棒になる
+    // 下端: `]` を90度回転（時計回り）
+    // グリフ中心を topY+height に置くことで、爪が topY+height より下にはみ出しつつ
+    // 縦棒部分が topY+height から上向きに伸びる形になる
     ctx.save();
-    ctx.translate(cx, topY + height - size / 2);
+    ctx.translate(cx, topY + height);
     ctx.rotate(Math.PI / 2);
     ctx.fillText(']', 0, 0);
     ctx.restore();
@@ -369,9 +373,9 @@ export class Tategaki {
 
           // グループ先頭でのみ括弧を描画（本文字の右側）
           if (seg.rubyIndex === 0) {
-            const bracketHeight = fontSize * 2.5; // 縦幅: 本文字の2.5倍固定
-            // bracketTopY: グリフ半分ずらして上端に揃える
-            const bracketTopY = currentY - fontSize / 2 - bracketGlyphSize / 2;
+            const bracketHeight = fontSize * 3 * seg.rubyTotal; // 縦幅: 本文字の3倍 × 文字数
+            // bracketTopY: 本文字の上端に揃える
+            const bracketTopY = currentY - fontSize / 2;
             // 括弧中心X = 本体右端 + bracketWidth/2
             const bracketCx = charCx + fontSize / 2 + bracketWidth / 2;
             this._drawBracket(bracketCx, bracketTopY, bracketHeight, bracketGlyphSize);
