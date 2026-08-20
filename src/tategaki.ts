@@ -80,7 +80,7 @@ export class Tategaki {
     this.ctx = ctx;
     this.font = options.font ?? '40px sans-serif';
     this.lineHeight = options.lineHeight ?? 1.1;
-    this.columnGap = options.columnGap ?? 3.5;
+    this.columnGap = options.columnGap ?? 5;
     this.color = options.color ?? '#000000';
     this.rubyRatio = options.rubyRatio ?? 0.5;
     this._fontSize = this._parseFontSize(this.font);
@@ -272,7 +272,9 @@ export class Tategaki {
   private _segmentOffsets(seg: Segment): { left: number; right: number } {
     const fontSize = this._fontSize;
     const rubySize = fontSize * this.rubyRatio;
-    const bracketWidth = fontSize * 3;
+    const bracketWidth = fontSize * 3;       // bracketBox 用
+    // readBox: 本文字右端 + lineGap(3) + lineGap(3) + bracketGlyphSize(fontSize*2)
+    const readBoxRight = fontSize / 2 + 6 + fontSize * 2;
     switch (seg.kind) {
       case 'normal':
         return {
@@ -287,7 +289,7 @@ export class Tategaki {
       case 'readBox':
         return {
           left: fontSize / 2,
-          right: fontSize / 2 + bracketWidth,
+          right: readBoxRight,
         };
       case 'bracketBox':
         return {
@@ -326,8 +328,8 @@ export class Tategaki {
     const rubySize = fontSize * this.rubyRatio;
     const step = fontSize * this.lineHeight;
     const boxSize = this.boxSize;
-    const bracketWidth = fontSize * 3;     // 括弧の横幅（列幅計算用）
-    const bracketGlyphSize = fontSize * 1.5;     // 括弧グリフのフォントサイズ（readBox 用）
+    const bracketGlyphSize = fontSize * 2;       // 括弧グリフのフォントサイズ（readBox 用）
+    const bracketWidth = fontSize * 3;           // bracketBox 括弧の横幅（列幅計算用）
     const bracketBoxGlyphSize = fontSize * 3;    // 括弧グリフのフォントサイズ（bracketBox 用）
 
     const { segments } = parse(text);
@@ -413,7 +415,8 @@ export class Tategaki {
           // グループ先頭でのみ縦線・括弧を描画（本文字の右側）
           if (seg.rubyIndex === 0) {
             // 漢字の右端に縦線（漢字文字数分の長さ）
-            const lineX = charCx + fontSize / 2 + 3;
+            const lineGap = 3;                             // 本文字右端〜縦線の余白
+            const lineX = charCx + fontSize / 2 + lineGap;
             const lineBottomY = currentY + readStep * seg.rubyTotal;
             const ctx = this.ctx;
             ctx.save();
@@ -426,14 +429,14 @@ export class Tategaki {
             ctx.stroke();
             ctx.restore();
             const bracketHeight = readStep * seg.rubyTotal; // 縦幅: readStep × 文字数
-            // 括弧中心X = 本体右端 + bracketWidth/2
-            const bracketCx = charCx + fontSize / 2 + bracketWidth / 2;
+            // 括弧中心X = 縦線X + 縦線〜括弧左端の余白(lineGap) + グリフ幅/2
+            const bracketCx = lineX + lineGap + bracketGlyphSize / 2;
             this._drawReadBracket(bracketCx, currentY, bracketHeight, bracketGlyphSize);
 
             // showAnswer のときルビを括弧の右側に表示
             if (this.showAnswer && seg.ruby !== null) {
               const groupHeight = readStep * seg.rubyTotal;
-              const rubyCx = charCx + fontSize / 2 + bracketWidth + rubySize * 0.6;
+              const rubyCx = lineX + lineGap + bracketGlyphSize + rubySize * 0.6;
               this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, rubySize);
             }
           }
