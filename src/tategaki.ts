@@ -47,7 +47,7 @@ export interface TategakiOptions {
   font?: string;
   /** 文字間隔（フォントサイズの倍数）。デフォルト: 1.1 */
   lineHeight?: number;
-  /** 列間隔（フォントサイズの倍数）。デフォルト: 1.6 */
+  /** 列の中心間距離（フォントサイズの倍数）。fillTextBlock で等間隔配置に使用。デフォルト: 3.5 */
   columnGap?: number;
   /** 文字色。デフォルト: '#000000' */
   color?: string;
@@ -80,7 +80,7 @@ export class Tategaki {
     this.ctx = ctx;
     this.font = options.font ?? '40px sans-serif';
     this.lineHeight = options.lineHeight ?? 1.1;
-    this.columnGap = options.columnGap ?? 1.6;
+    this.columnGap = options.columnGap ?? 3.5;
     this.color = options.color ?? '#000000';
     this.rubyRatio = options.rubyRatio ?? 0.5;
     this._fontSize = this._parseFontSize(this.font);
@@ -504,14 +504,12 @@ export class Tategaki {
    * @param y      - 列の上端Y座標
    */
   fillTextBlock(lines: string[], x: number, y: number): void {
+    const step = this._fontSize * this.columnGap;
     let currentX = x;
     for (let i = 0; i < lines.length; i++) {
-      const bounds = this.measureText(lines[i]);
       this.fillText(lines[i], currentX, y);
       if (i + 1 < lines.length) {
-        const nextBounds = this.measureText(lines[i + 1]);
-        // 次列の本文字中心 = 現列の本文字中心 - (現列 bodyLeft + 次列 bodyRight)
-        currentX -= bounds.bodyLeft + nextBounds.bodyRight;
+        currentX -= step;
       }
     }
   }
@@ -565,7 +563,7 @@ export class Tategaki {
    */
   measureChar(): { width: number; height: number } {
     return {
-      width: this._fontSize * this.columnGap,
+      width: this._fontSize * this.columnGap,   // 列の中心間距離
       height: this._fontSize * this.lineHeight,
     };
   }

@@ -25,7 +25,6 @@ function main(): void {
   const tategaki = new Tategaki(ctx as unknown as CanvasRenderingContext2D, {
     font: `${Math.round(13 * DPI_SCALE)}px "YuKyokasho"`,
     lineHeight: 1.0,
-    columnGap: 1.9,
   });
 
   // 通常ルビ・書き取り枠・読み取り枠・送り仮名付き書き取り枠を含む例文
@@ -40,8 +39,8 @@ function main(): void {
     // '前{学校}[[がっこう]]へ行く。',
     // '前{{書く}}[かく]後',
     // '前{{慮る}}[おもんぱかる]後',
-    '① {今日}[[きょう]]は<学>[がっ]<校>[こう]で{{魚釣り}}[さかなつり]実習があるぞ。',
-    '② おいしい<給>[きゅう]<食>[しょく]。',
+    '① おいしい<給>[きゅう]<食>[しょく]。',
+    '② {今日}[[きょう]]は<学>[がっ]<校>[こう]で{{魚釣り}}[さかなつり]実習があるぞ。',
     '③ <新>[にい]<潟>[がた]県のソースカツ丼。',
     '④ <美人局>[つつもたせ]に注意する。',
   ], PAGE_WIDTH - Math.round(60 * DPI_SCALE), Math.round(50 * DPI_SCALE));
