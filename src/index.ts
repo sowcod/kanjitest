@@ -2,9 +2,10 @@ import * as fs from 'fs';
 import { createCanvas, registerFont } from 'canvas';
 import { Tategaki } from './tategaki';
 
-// A4横 (landscape) のポイントサイズ
-const PAGE_WIDTH = 841.89;
-const PAGE_HEIGHT = 595.28;
+// A4横 (landscape) @ 300dpi
+const DPI_SCALE = 300 / 72;
+const PAGE_WIDTH = Math.round(841.89 * DPI_SCALE);
+const PAGE_HEIGHT = Math.round(595.28 * DPI_SCALE);
 
 // 游教科書体を登録（小学校教科書と同じ字形）
 registerFont(
@@ -22,7 +23,7 @@ function main(): void {
 
   // 縦書きライブラリを初期化
   const tategaki = new Tategaki(ctx, {
-    font: '26px "YuKyokasho"',
+    font: `${Math.round(13 * DPI_SCALE)}px "YuKyokasho"`,
     lineHeight: 1.0,
     columnGap: 1.9,
   });
@@ -39,7 +40,7 @@ function main(): void {
     '前{学校}[[がっこう]]へ行く。',
     '前{{書く}}[かく]後',
     '前{{慮る}}[おもんぱかる]後',
-  ], PAGE_WIDTH - 60, 50);
+  ], PAGE_WIDTH - Math.round(60 * DPI_SCALE), Math.round(50 * DPI_SCALE));
 
   // PNG として書き出す
   const pngBuffer = canvas.toBuffer('image/png');
