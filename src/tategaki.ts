@@ -6,15 +6,13 @@ import type { Segment } from './parser';
  * 縦書き描画ライブラリ
  *
  * 座標系: Canvas 2D と同じく左上原点。
- * x, y は描画ブロックの「右上」を指定する（縦書きの起点）。
+ * x, y は描画ブロックの「本文字中心X・上端Y」を指定する（縦書きの起点）。
  *
  * 列レイアウト（右→左）:
  *
- *   ←─ 列幅 ──→
- *   [ルビ][本文字]
- *              ↑ x（本文字の右端）
+ *   ←左余白→[本文字]←右余白（ルビ/括弧）→
+ *                ↑ x（本文字の中心X）
  *
- * 本文字中心 charCx = x - fontSize/2
  * ルビ・括弧は x より右（大きいX値）に描画する。
  * fillTextBlock は列幅ぶん左（小さいX値）に currentX を進める。
  */
@@ -263,54 +261,64 @@ export class Tategaki {
   }
 
   /**
-   * Segment 1つ分の列幅を返す。
+   * Segment 1つ分の本文字中心からの左右オフセットを返す。
    *
-   * 列幅の設計:
-   *   |←─── columnWidth ───→|
-   *   |←付属物→|←本体→|
-   *             ↑ 本体中心
-   *                          ↑ x（列右端）
+   * 座標設計:
+   *   ←bodyLeft→[本文字]←bodyRight（ルビ/括弧）→
+   *                  ↑ x（本文字の中心X）
    *
-   * 付属物（ルビ・括弧）は本体の左側に配置し、列の外にははみ出さない。
-   * x = 列右端 = 本体右端。
+   * ルビ・括弧は本体の右側に配置する。
    */
-  private _segmentWidth(seg: Segment): number {
+  private _segmentOffsets(seg: Segment): { left: number; right: number } {
     const fontSize = this._fontSize;
     const rubySize = fontSize * this.rubyRatio;
-    const bracketWidth = fontSize * 3; // 括弧の列幅（横幅3倍）
+    const bracketWidth = fontSize * 3;
     switch (seg.kind) {
       case 'normal':
-        return fontSize + (seg.ruby !== null ? rubySize * 1.2 : 0);
+        return {
+          left: fontSize / 2,
+          right: fontSize / 2 + (seg.ruby !== null ? rubySize * 1.2 : 0),
+        };
       case 'writeBox':
-        return this.boxSize + rubySize * 1.2;
+        return {
+          left: this.boxSize / 2,
+          right: this.boxSize / 2 + rubySize * 1.2,
+        };
       case 'readBox':
-        return fontSize + bracketWidth;
+        return {
+          left: fontSize / 2,
+          right: fontSize / 2 + bracketWidth,
+        };
       case 'bracketBox':
-        return bracketWidth + rubySize * 1.2;
+        return {
+          left: bracketWidth / 2,
+          right: bracketWidth / 2 + rubySize * 1.2,
+        };
     }
   }
 
   /**
-   * 列幅 = 列内の全 Segment の幅の最大値。
+   * 列幅 = max(bodyLeft) + max(bodyRight)。
+   * fillText 内での配置計算に使用。
    */
   private _calcColumnWidth(segments: Segment[]): number {
-    return segments.reduce((m, s) => Math.max(m, this._segmentWidth(s)), 0);
+    const offsets = segments.map(s => this._segmentOffsets(s));
+    const maxLeft  = offsets.reduce((m, o) => Math.max(m, o.left),  0);
+    const maxRight = offsets.reduce((m, o) => Math.max(m, o.right), 0);
+    return maxLeft + maxRight;
   }
 
   /**
    * 1列（1行）を縦書きで描画する。
-   * x, y は列の右上を指定（列の右端が x）。
+   * x は本文字の中心X座標、y は列の上端Y座標。
    *
    * 座標設計:
-   *   |←─── columnWidth ───→|
-   *   |←付属物幅→|←本体幅→|
-   *               ↑ 本体中心 = x - columnWidth + 付属物幅 + 本体幅/2
-   *                            = x - 本体幅/2 - 右余白
-   *                                              ↑ x（列右端）
+   *   ←左余白→[本文字]←右余白（ルビ/括弧）→
+   *                ↑ x（本文字の中心X）
    *
    * @param text  - テキスト（記法可）
-   * @param x     - 列右端のX座標
-   * @param y     - 列右上のY座標
+   * @param x     - 本文字の中心X座標
+   * @param y     - 列の上端Y座標
    * @returns     実際の列幅（px）
    */
   fillText(text: string, x: number, y: number): number {
@@ -325,21 +333,15 @@ export class Tategaki {
     const { segments } = parse(text);
     const columnWidth = this._calcColumnWidth(segments);
 
-    // 列幅の設計:
-    //   |←─── columnWidth ───→|
-    //   |←本体→|←ルビ/括弧→|
-    //            ↑ 本体中心 = x - columnWidth + 本体幅/2
-    //                                           ↑ x（列右端）
-    const boxLeft = x - columnWidth;                  // writeBox の枠左端
-    const charCx = x - columnWidth + fontSize / 2;   // readBox の本文字中心
-    // normal 文字の中心X: 列内の種類に応じて本体幅の中央に揃える
-    const hasWriteBox = segments.some(s => s.kind === 'writeBox');
-    const hasBracketBox = segments.some(s => s.kind === 'bracketBox');
-    const normalCx = hasWriteBox
-      ? boxLeft + boxSize / 2
-      : hasBracketBox
-        ? boxLeft + bracketWidth / 2
-        : charCx;
+    // 座標設計:
+    //   x = 各 Segment の本体中心X（全 Segment 共通の軸）
+    //   normal      の本文字中心X = x
+    //   readBox     の本文字中心X = x
+    //   writeBox    の枠中心X     = x
+    //   bracketBox  の括弧中心X   = x（bracketWidth/2 を左右に広げる）
+    const charCx = x;                         // normal / readBox の本文字中心
+    const boxLeft = x - boxSize / 2;          // writeBox の枠左端
+    const bracketBoxCx = x;                   // bracketBox の括弧中心
 
     // currentY は常に「次のセグメントの上端」
     let currentY = y;
@@ -349,10 +351,10 @@ export class Tategaki {
 
         case 'normal': {
           const cy = currentY + fontSize / 2;
-          this._drawChar(seg.char, normalCx, cy, fontSize);
+          this._drawChar(seg.char, charCx, cy, fontSize);
           if (seg.ruby !== null) {
             const groupHeight = step * seg.rubyTotal;
-            const rubyCx = normalCx + fontSize / 2 + rubySize * 0.6;
+            const rubyCx = charCx + fontSize / 2 + rubySize * 0.6;
             this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, rubySize);
           }
           currentY += step;
@@ -418,12 +420,12 @@ export class Tategaki {
           const bracketGap = bracketBoxGlyphSize / 2;
           // currentY = ギャップの上端、topY = 括弧の上端
           const topY = currentY + bracketGap;
-          const bracketCx = x - columnWidth + bracketWidth / 2;
-          this._drawBracketBox(bracketCx, topY, bracketHeight, bracketBoxGlyphSize);
+          // bracketBox の括弧中心 = x（全 Segment 共通の中心軸）
+          this._drawBracketBox(bracketBoxCx, topY, bracketHeight, bracketBoxGlyphSize);
 
           // 空白部分の右側に縦線
           {
-            const lineX = x - columnWidth + bracketWidth;
+            const lineX = bracketBoxCx + bracketWidth / 2;
             const ctx = this.ctx;
             ctx.save();
             ctx.strokeStyle = this.color;
@@ -442,13 +444,13 @@ export class Tategaki {
             const charStep = bracketHeight / Math.max(chars.length, 1);
             for (let ci = 0; ci < chars.length; ci++) {
               const cy = topY + charStep * ci + charStep / 2;
-              this._drawChar(chars[ci], bracketCx, cy, fontSize * 0.8);
+              this._drawChar(chars[ci], bracketBoxCx, cy, fontSize * 0.8);
             }
           }
 
-          // ルビは括弧の右側
+          // ルビは括弧右端の右側
           if (seg.ruby !== null) {
-            const rubyCx = x - columnWidth + bracketWidth + rubySize * 0.6;
+            const rubyCx = bracketBoxCx + bracketWidth / 2 + rubySize * 0.6;
             this._drawRubyAt(seg.ruby, rubyCx, topY, bracketHeight, rubySize, rubySize * 1.5);
           }
 
@@ -463,18 +465,67 @@ export class Tategaki {
 
   /**
    * 複数列を右から左へ縦書きで描画する。
-   * x, y は最右列の右上を指定。
+   * x は最右列の本文字中心X座標、y は列の上端Y座標。
    *
    * @param lines  - 列ごとのテキスト配列（記法可）
-   * @param x      - 最右列の右上X座標
-   * @param y      - 最右列の右上Y座標
+   * @param x      - 最右列の本文字中心X座標
+   * @param y      - 列の上端Y座標
    */
   fillTextBlock(lines: string[], x: number, y: number): void {
     let currentX = x;
-    for (const line of lines) {
-      const columnWidth = this.fillText(line, currentX, y);
-      currentX -= columnWidth;
+    for (let i = 0; i < lines.length; i++) {
+      const bounds = this.measureText(lines[i]);
+      this.fillText(lines[i], currentX, y);
+      if (i + 1 < lines.length) {
+        const nextBounds = this.measureText(lines[i + 1]);
+        // 次列の本文字中心 = 現列の本文字中心 - (現列 bodyLeft + 次列 bodyRight)
+        currentX -= bounds.bodyLeft + nextBounds.bodyRight;
+      }
     }
+  }
+
+  /**
+   * テキスト1列分のレイアウト情報を返す（描画は行わない）。
+   *
+   * 返り値:
+   *   - width      : 列全体の横幅（= bodyLeft + bodyRight）
+   *   - height     : 列全体の縦幅
+   *   - bodyLeft   : 本文字中心から列左端までのオフセット（常に正の値）
+   *   - bodyRight  : 本文字中心から列右端までのオフセット（常に正の値）
+   *
+   * @param text  - テキスト（記法可）
+   */
+  measureText(text: string): { width: number; height: number; bodyLeft: number; bodyRight: number } {
+    const fontSize = this._fontSize;
+    const step = fontSize * this.lineHeight;
+    const boxSize = this.boxSize;
+    const bracketBoxGlyphSize = fontSize * 3;
+
+    const { segments } = parse(text);
+    const offsets = segments.map(s => this._segmentOffsets(s));
+    const bodyLeft  = offsets.reduce((m, o) => Math.max(m, o.left),  0);
+    const bodyRight = offsets.reduce((m, o) => Math.max(m, o.right), 0);
+
+    let height = 0;
+    for (const seg of segments) {
+      switch (seg.kind) {
+        case 'normal':
+        case 'readBox':
+          height += step;
+          break;
+        case 'writeBox':
+          height += boxSize;
+          break;
+        case 'bracketBox': {
+          const bracketHeight = (seg.boxCount ?? 3) * boxSize;
+          const bracketGap = bracketBoxGlyphSize / 2;
+          height += bracketHeight + bracketGap * 2;
+          break;
+        }
+      }
+    }
+
+    return { width: bodyLeft + bodyRight, height, bodyLeft, bodyRight };
   }
 
   /**
