@@ -428,7 +428,7 @@ export class Tategaki {
             ctx.lineTo(lineX, lineBottomY);
             ctx.stroke();
             ctx.restore();
-            const bracketHeight = readStep * seg.rubyTotal; // 縦幅: readStep × 文字数
+            const bracketHeight = readStep * seg.rubyTotal * 1.3; // 縦幅: readStep × 文字数 × 1.3
             // 括弧中心X = 縦線X + 縦線〜括弧左端の余白(lineGap) + グリフ幅/2
             const bracketCx = lineX + lineGap + bracketGlyphSize / 2;
             this._drawReadBracket(bracketCx, currentY, bracketHeight, bracketGlyphSize);
