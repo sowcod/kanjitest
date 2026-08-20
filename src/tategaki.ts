@@ -60,9 +60,13 @@ export interface TategakiOptions {
   boxSize?: number;
   /**
    * true のとき枠内の文字・ルビをすべて表示する（解答例印刷用）。
-   * デフォルト: false（テスト用・空欄）
+   * デフォルト: true（朱色で表示）
    */
   showAnswer?: boolean;
+  /**
+   * 解答文字の色。デフォルト: '#c0392b'（朱色）
+   */
+  answerColor?: string;
 }
 
 export class Tategaki {
@@ -75,6 +79,7 @@ export class Tategaki {
   private readonly _fontSize: number;
   private readonly boxSize: number;
   private readonly showAnswer: boolean;
+  private readonly answerColor: string;
 
   constructor(ctx: CanvasRenderingContext2D, options: TategakiOptions = {}) {
     this.ctx = ctx;
@@ -85,7 +90,8 @@ export class Tategaki {
     this.rubyRatio = options.rubyRatio ?? 0.5;
     this._fontSize = this._parseFontSize(this.font);
     this.boxSize = options.boxSize ?? this._fontSize * 2.5;
-    this.showAnswer = options.showAnswer ?? false;
+    this.showAnswer = options.showAnswer ?? true;
+    this.answerColor = options.answerColor ?? '#c0392b';
   }
 
   /** fontプロパティ文字列からフォントサイズ(px)を抽出する */
@@ -106,11 +112,11 @@ export class Tategaki {
    * @param cy       - 文字セルの中心Y
    * @param fontSize
    */
-  private _drawChar(ch: string, cx: number, cy: number, fontSize: number): void {
+  private _drawChar(ch: string, cx: number, cy: number, fontSize: number, color?: string): void {
     const ctx = this.ctx;
     ctx.save();
     ctx.font = this._replaceFontSize(this.font, fontSize);
-    ctx.fillStyle = this.color;
+    ctx.fillStyle = color ?? this.color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -193,9 +199,9 @@ export class Tategaki {
 
     ctx.restore();
 
-    // 解答モード: 枠内に文字を描画
+    // 解答モード: 枠内に朱色で文字を描画
     if (char !== undefined) {
-      this._drawChar(char, left + size / 2, top + size / 2, size * 0.7);
+      this._drawChar(char, left + size / 2, top + size / 2, size, this.answerColor);
     }
   }
 
@@ -432,11 +438,30 @@ export class Tategaki {
             const bracketCx = lineX + lineGap + bracketGlyphSize / 2;
             this._drawReadBracket(bracketCx, currentY, bracketHeight, bracketGlyphSize);
 
-            // showAnswer のときルビを括弧の右側に表示
+            // showAnswer のとき読み仮名を括弧内（bracketCx）に朱色で縦中央揃えで表示
             if (this.showAnswer && seg.ruby !== null) {
-              const groupHeight = readStep * seg.rubyTotal;
-              const rubyCx = lineX + lineGap + bracketGlyphSize + rubySize * 0.6;
-              this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, rubySize);
+              const rubyChars = [...seg.ruby];
+              const n = rubyChars.length;
+              const availH = bracketHeight;
+              const answerSize = rubySize * 2;
+              const wantStep = answerSize * 1.5;
+              const minStep  = answerSize * 1.0;
+              const charStep = n > 0
+                ? Math.max(Math.min(availH / n, wantStep), minStep)
+                : wantStep;
+              const totalH = charStep * n;
+              let ry = currentY + availH / 2 - totalH / 2 + charStep / 2;
+              const ctx2 = this.ctx;
+              ctx2.save();
+              ctx2.font = this._replaceFontSize(this.font, answerSize);
+              ctx2.fillStyle = this.answerColor;
+              ctx2.textAlign = 'center';
+              ctx2.textBaseline = 'middle';
+              for (const rch of rubyChars) {
+                ctx2.fillText(rch, bracketCx, ry);
+                ry += charStep;
+              }
+              ctx2.restore();
             }
           }
 
@@ -472,13 +497,21 @@ export class Tategaki {
             ctx.restore();
           }
 
-          // showAnswer のとき括弧内に文字を描画
+          // showAnswer のとき括弧内に朱色で縦中央揃えして文字を描画
           if (this.showAnswer) {
             const chars = [...seg.char];
-            const charStep = bracketHeight / Math.max(chars.length, 1);
-            for (let ci = 0; ci < chars.length; ci++) {
-              const cy = topY + charStep * ci + charStep / 2;
-              this._drawChar(chars[ci], bracketBoxCx, cy, fontSize * 0.8);
+            const n = chars.length;
+            const charFs = fontSize * 2;
+            const wantStep = charFs * 1.5;
+            const minStep  = charFs * 1.0;
+            const charStep = n > 0
+              ? Math.max(Math.min(bracketHeight / n, wantStep), minStep)
+              : wantStep;
+            const totalH = charStep * n;
+            let cy = topY + bracketHeight / 2 - totalH / 2 + charStep / 2;
+            for (const ch of chars) {
+              this._drawChar(ch, bracketBoxCx, cy, charFs, this.answerColor);
+              cy += charStep;
             }
           }
 
