@@ -269,16 +269,16 @@ export class Tategaki {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // 上端: グリフ中心を topY + size/2 に置き、爪が topY の内側から始まる
+    // 上端: グリフ中心を topY の外側に置き、爪が topY の外側（上）に出る
     ctx.save();
-    ctx.translate(cx, topY + size / 2);
+    ctx.translate(cx, topY - size / 2);
     ctx.rotate(Math.PI / 2);
     ctx.fillText('〔', 0, 0);
     ctx.restore();
 
-    // 下端: グリフ中心を topY+height - size/2 に置き、爪が topY+height の内側で終わる
+    // 下端: グリフ中心を topY+height の外側に置き、爪が topY+height の外側（下）に出る
     ctx.save();
-    ctx.translate(cx, topY + height - size / 2);
+    ctx.translate(cx, topY + height + size / 2);
     ctx.rotate(Math.PI / 2);
     ctx.fillText('〕', 0, 0);
     ctx.restore();
@@ -343,7 +343,8 @@ export class Tategaki {
     const step = fontSize * this.lineHeight;
     const boxSize = this.boxSize;
     const bracketWidth = fontSize * 3;     // 括弧の横幅（列幅計算用）
-    const bracketGlyphSize = fontSize * 1.5;     // 括弧グリフのフォントサイズ（爪の大きさ）
+    const bracketGlyphSize = fontSize * 1.5;     // 括弧グリフのフォントサイズ（readBox 用）
+    const bracketBoxGlyphSize = fontSize * 3;    // 括弧グリフのフォントサイズ（bracketBox 用）
 
     const { segments } = parse(text);
     const columnWidth = this._calcColumnWidth(segments);
@@ -438,16 +439,33 @@ export class Tategaki {
 
         case 'bracketBox': {
           const bracketHeight = (seg.boxCount ?? 3) * boxSize;
-          // currentY = 括弧の上端
+          const bracketGap = bracketBoxGlyphSize / 2;
+          // currentY = ギャップの上端、topY = 括弧の上端
+          const topY = currentY + bracketGap;
           const bracketCx = x - columnWidth + bracketWidth / 2;
-          this._drawBracketBox(bracketCx, currentY, bracketHeight, bracketGlyphSize);
+          this._drawBracketBox(bracketCx, topY, bracketHeight, bracketBoxGlyphSize);
+
+          // 空白部分の右側に縦線
+          {
+            const lineX = x - columnWidth + bracketWidth;
+            const ctx = this.ctx;
+            ctx.save();
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(lineX, topY);
+            ctx.lineTo(lineX, topY + bracketHeight);
+            ctx.stroke();
+            ctx.restore();
+          }
 
           // showAnswer のとき括弧内に文字を描画
           if (this.showAnswer) {
             const chars = [...seg.char];
             const charStep = bracketHeight / Math.max(chars.length, 1);
             for (let ci = 0; ci < chars.length; ci++) {
-              const cy = currentY + charStep * ci + charStep / 2;
+              const cy = topY + charStep * ci + charStep / 2;
               this._drawChar(chars[ci], bracketCx, cy, fontSize * 0.8);
             }
           }
@@ -455,10 +473,10 @@ export class Tategaki {
           // ルビは括弧の右側
           if (seg.ruby !== null) {
             const rubyCx = x - columnWidth + bracketWidth + rubySize * 0.6;
-            this._drawRubyAt(seg.ruby, rubyCx, currentY, bracketHeight, boxSize, rubySize);
+            this._drawRubyAt(seg.ruby, rubyCx, topY, bracketHeight, 0, rubySize, rubySize * 1.5);
           }
 
-          currentY += bracketHeight;
+          currentY += bracketHeight + bracketGap * 2;
           break;
         }
       }
