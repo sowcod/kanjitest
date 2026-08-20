@@ -132,44 +132,20 @@ export class Tategaki {
   }
 
   /**
-   * ルビを描画する（本文字中心X基準）。
-   * ルビは charCx + fontSize/2 より右（= x より右）に描画する。
-   *
-   * @param ruby        - ルビ文字列
-   * @param charCx      - 本文字の中心X
-   * @param groupTopCy  - グループ先頭文字の中心Y
-   * @param groupHeight - グループ全体の縦幅（step × 文字数 など）
-   * @param fontSize    - グループ高さ計算の基準サイズ
-   * @param rubySize    - ルビのフォントサイズ
-   */
-  private _drawRuby(
-    ruby: string,
-    charCx: number,
-    groupTopCy: number,
-    groupHeight: number,
-    fontSize: number,
-    rubySize: number,
-  ): void {
-    const rubyCx = charCx + fontSize / 2 + rubySize / 2 + 2;
-    this._drawRubyAt(ruby, rubyCx, groupTopCy, groupHeight, fontSize, rubySize);
-  }
-
-  /**
    * ルビをX座標を直接指定して描画する。
    *
    * @param ruby        - ルビ文字列
    * @param rubyCx      - ルビ列の中心X
-   * @param groupTopCy  - グループ先頭文字の中心Y
+   * @param groupTopY   - グループの上端Y
    * @param groupHeight - グループ全体の縦幅
-   * @param refSize     - グループ高さ計算の基準サイズ（本文字サイズ or boxSize）
    * @param rubySize    - ルビのフォントサイズ
+   * @param rubyStep    - ルビの字間（省略時は rubySize）
    */
   private _drawRubyAt(
     ruby: string,
     rubyCx: number,
-    groupTopCy: number,
+    groupTopY: number,
     groupHeight: number,
-    refSize: number,
     rubySize: number,
     rubyStep: number = rubySize,
   ): void {
@@ -182,7 +158,7 @@ export class Tategaki {
 
     const rubyChars = [...ruby];
     const totalRubyHeight = rubyStep * rubyChars.length;
-    const groupCenterY = groupTopCy + (groupHeight - refSize) / 2;
+    const groupCenterY = groupTopY + groupHeight / 2;
     let ry = groupCenterY - totalRubyHeight / 2 + rubyStep / 2;
 
     for (const rch of rubyChars) {
@@ -377,7 +353,7 @@ export class Tategaki {
           if (seg.ruby !== null) {
             const groupHeight = step * seg.rubyTotal;
             const rubyCx = normalCx + fontSize / 2 + rubySize * 0.6;
-            this._drawRubyAt(seg.ruby, rubyCx, cy, groupHeight, fontSize, rubySize);
+            this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, rubySize);
           }
           currentY += step;
           break;
@@ -393,8 +369,8 @@ export class Tategaki {
             const groupHeight = boxSize * seg.rubyTotal;
             const boxRight = boxLeft + boxSize;
             const rubyCx = boxRight + rubySize * 0.6;
-            // groupTopCy は先頭枠の中心Y。writeBox のルビは字間1.5倍
-            this._drawRubyAt(seg.ruby, rubyCx, currentY + boxSize / 2, groupHeight, boxSize, rubySize, rubySize * 1.5);
+            // writeBox のルビは字間1.5倍
+            this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, rubySize, rubySize * 1.5);
           }
 
           currentY += boxSize;
@@ -429,7 +405,7 @@ export class Tategaki {
             if (this.showAnswer && seg.ruby !== null) {
               const groupHeight = step * seg.rubyTotal;
               const rubyCx = charCx + fontSize / 2 + bracketWidth + rubySize * 0.6;
-              this._drawRubyAt(seg.ruby, rubyCx, cy, groupHeight, fontSize, rubySize);
+              this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, rubySize);
             }
           }
 
@@ -473,7 +449,7 @@ export class Tategaki {
           // ルビは括弧の右側
           if (seg.ruby !== null) {
             const rubyCx = x - columnWidth + bracketWidth + rubySize * 0.6;
-            this._drawRubyAt(seg.ruby, rubyCx, topY, bracketHeight, 0, rubySize, rubySize * 1.5);
+            this._drawRubyAt(seg.ruby, rubyCx, topY, bracketHeight, rubySize, rubySize * 1.5);
           }
 
           currentY += bracketHeight + bracketGap * 2;
