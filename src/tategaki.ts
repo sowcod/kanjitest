@@ -1,5 +1,5 @@
-import { parse } from './parser';
-import type { Segment } from './parser';
+import { parse } from './parser.js';
+import type { Segment } from './parser.js';
 
 /**
  * 縦書き描画ライブラリ
