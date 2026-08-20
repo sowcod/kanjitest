@@ -380,6 +380,15 @@ export class Tategaki {
         }
 
         case 'readBox': {
+          // readBox の字間は 1.5 倍、グループ前後に 0.25 step ずつスペースを追加
+          const readStep = step * 1.5;
+          const readPad  = step * 0.25;
+
+          // グループ先頭: 前スペースを追加
+          if (seg.rubyIndex === 0) {
+            currentY += readPad;
+          }
+
           const cy = currentY + fontSize / 2;
           this._drawChar(seg.char, charCx, cy, fontSize);
 
@@ -387,7 +396,7 @@ export class Tategaki {
           if (seg.rubyIndex === 0) {
             // 漢字の右端に縦線（漢字文字数分の長さ）
             const lineX = charCx + fontSize / 2 + 3;
-            const lineBottomY = currentY + step * seg.rubyTotal;
+            const lineBottomY = currentY + readStep * seg.rubyTotal;
             const ctx = this.ctx;
             ctx.save();
             ctx.strokeStyle = this.color;
@@ -398,20 +407,25 @@ export class Tategaki {
             ctx.lineTo(lineX, lineBottomY);
             ctx.stroke();
             ctx.restore();
-            const bracketHeight = fontSize * 3 * seg.rubyTotal; // 縦幅: 本文字の3倍 × 文字数
+            const bracketHeight = readStep * seg.rubyTotal; // 縦幅: readStep × 文字数
             // 括弧中心X = 本体右端 + bracketWidth/2
             const bracketCx = charCx + fontSize / 2 + bracketWidth / 2;
             this._drawReadBracket(bracketCx, currentY, bracketHeight, bracketGlyphSize);
 
             // showAnswer のときルビを括弧の右側に表示
             if (this.showAnswer && seg.ruby !== null) {
-              const groupHeight = step * seg.rubyTotal;
+              const groupHeight = readStep * seg.rubyTotal;
               const rubyCx = charCx + fontSize / 2 + bracketWidth + rubySize * 0.6;
               this._drawRubyAt(seg.ruby, rubyCx, currentY, groupHeight, rubySize);
             }
           }
 
-          currentY += step;
+          currentY += readStep;
+
+          // グループ末尾: 後スペースを追加
+          if (seg.rubyIndex === seg.rubyTotal - 1) {
+            currentY += readPad;
+          }
           break;
         }
 
