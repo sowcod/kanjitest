@@ -124,7 +124,12 @@
     const errorBar  = document.getElementById('error-bar');
     const ctx       = canvas.getContext('2d');
 
-    textarea.value = '② {今日}[[きょう]]は<学>[がっ]<校>[こう]で{{魚釣り}}[さかなつり]実習があるぞ。';
+    textarea.value = [
+      '① 美[お]味[い]しい屋[や]台[たい]がてんこもり。',
+      '② わたあめ ビールに じゃがバター。',
+      '③ {{たこ焼き}}[たこやき] すき焼[[や]]き ケバブに。',
+      '④ てりてりソースの <焼>[や]きそば。',
+    ].join('\n');
 
     function getLines() {
       return textarea.value.split('\n').filter(l => l.trim() !== '');
@@ -153,9 +158,27 @@
         const tategaki = new Tategaki(ctx, { font: FONT, lineHeight: 1.0 });
         // 各列の幅を計測してブロック全体の幅を算出し、Canvas 中央に配置
         const colStep = FONT_SIZE * 5; // columnGap デフォルト 5
+        const measures = lines.map(l => tategaki.measureText(l));
         const blockWidth = (lines.length - 1) * colStep
-          + lines.reduce((max, l) => Math.max(max, tategaki.measureText(l).width), 0);
+          + measures.reduce((max, m) => Math.max(max, m.width), 0);
         const startX = Math.round(canvas.width / 2 + blockWidth / 2);
+
+        // 各列の描画領域を矩形で囲む（デバッグ用）
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+        ctx.lineWidth = 1 * DPR;
+        for (let i = 0; i < lines.length; i++) {
+          const m = measures[i];
+          const cx = startX - i * colStep;
+          ctx.strokeRect(
+            cx - m.bodyLeft,
+            MARGIN_V,
+            m.width,
+            m.height,
+          );
+        }
+        ctx.restore();
+
         tategaki.fillTextBlock(lines, startX, MARGIN_V);
       } catch (e) {
         errorBar.textContent = String(e);

@@ -119,8 +119,7 @@ export class Tategaki {
       ctx.rotate(Math.PI / 2);
       ctx.fillText(ch, 0, 0);
     } else if (PUNCTUATION_CHARS.has(ch)) {
-      ctx.textAlign = 'left';
-      ctx.fillText(ch, cx + fontSize * 0.5 - fontSize * 0.1, cy - fontSize * 0.7);
+      ctx.fillText(ch, cx + fontSize * 0.7, cy - fontSize * 0.7);
     } else if (SMALL_CHARS.has(ch)) {
       ctx.fillText(ch, cx + fontSize * 0.1, cy - fontSize * 0.1);
     } else {
@@ -539,16 +538,37 @@ export class Tategaki {
     const bodyLeft  = offsets.reduce((m, o) => Math.max(m, o.left),  0);
     const bodyRight = offsets.reduce((m, o) => Math.max(m, o.right), 0);
 
+    const readStep = step * 1.5;
+    const readPad  = step * 0.5;
+    const writePad = step * 0.25;
+
     let height = 0;
-    for (const seg of segments) {
+    for (let si = 0; si < segments.length; si++) {
+      const seg = segments[si];
       switch (seg.kind) {
         case 'normal':
-        case 'readBox':
           height += step;
           break;
-        case 'writeBox':
-          height += boxSize;
+        case 'readBox': {
+          if (seg.rubyIndex === 0) {
+            height += readPad;
+          }
+          height += readStep;
+          if (seg.rubyIndex === seg.rubyTotal - 1) {
+            height += readPad;
+          }
           break;
+        }
+        case 'writeBox': {
+          const prevSeg = si > 0 ? segments[si - 1] : null;
+          const isFirstInRun = seg.rubyIndex === 0 && prevSeg?.kind !== 'writeBox';
+          if (isFirstInRun) height += writePad;
+          height += boxSize;
+          const nextSeg = si < segments.length - 1 ? segments[si + 1] : null;
+          const isLastInRun = seg.rubyIndex === seg.rubyTotal - 1 && nextSeg?.kind !== 'writeBox';
+          if (isLastInRun) height += writePad;
+          break;
+        }
         case 'bracketBox': {
           const bracketHeight = (seg.boxCount ?? 3) * boxSize;
           const bracketGap = bracketBoxGlyphSize / 2;
