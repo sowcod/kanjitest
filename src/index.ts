@@ -2,10 +2,10 @@ import * as fs from 'fs';
 import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import { Tategaki } from './tategaki';
 
-// A4横 (landscape) @ 300dpi
+// A4縦 (portrait) @ 300dpi
 const DPI_SCALE = 300 / 72;
-const PAGE_WIDTH = Math.round(841.89 * DPI_SCALE);
-const PAGE_HEIGHT = Math.round(595.28 * DPI_SCALE);
+const PAGE_WIDTH = Math.round(595.28 * DPI_SCALE);
+const PAGE_HEIGHT = Math.round(841.89 * DPI_SCALE);
 
 // 游教科書体を登録（小学校教科書と同じ字形）
 GlobalFonts.registerFromPath(
@@ -23,7 +23,7 @@ function main(): void {
 
   // 縦書きライブラリを初期化
   const tategaki = new Tategaki(ctx as unknown as CanvasRenderingContext2D, {
-    font: `${Math.round(13 * DPI_SCALE)}px "YuKyokasho"`,
+    font: `${Math.round(17 * DPI_SCALE)}px "YuKyokasho"`,
     lineHeight: 1.0,
   });
 
