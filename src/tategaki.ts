@@ -400,9 +400,9 @@ export class Tategaki {
         }
 
         case 'readBox': {
-          // readBox の字間は 1.5 倍、グループ前後に 0.25 step ずつスペースを追加
+          // readBox の字間は 1.5 倍、グループ前後に 0.5 step ずつスペースを追加
           const readStep = step * 1.5;
-          const readPad  = step * 0.25;
+          const readPad  = step * 0.5;
 
           // グループ先頭: 前スペースを追加
           if (seg.rubyIndex === 0) {
@@ -417,7 +417,7 @@ export class Tategaki {
             // 漢字の右端に縦線（漢字文字数分の長さ）
             const lineGap = 3;                             // 本文字右端〜縦線の余白
             const lineX = charCx + fontSize / 2 + lineGap;
-            const lineBottomY = currentY + readStep * seg.rubyTotal;
+            const lineBottomY = currentY + readStep * (seg.rubyTotal - 1) + fontSize;
             const ctx = this.ctx;
             ctx.save();
             ctx.strokeStyle = this.color;
