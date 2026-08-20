@@ -346,7 +346,8 @@ export class Tategaki {
     // currentY は常に「次のセグメントの上端」
     let currentY = y;
 
-    for (const seg of segments) {
+    for (let si = 0; si < segments.length; si++) {
+      const seg = segments[si];
       switch (seg.kind) {
 
         case 'normal': {
@@ -362,6 +363,16 @@ export class Tategaki {
         }
 
         case 'writeBox': {
+          // writeBox グループの先頭のみ前後の余白を判定する
+          // （連続する writeBox の間にはスペースを入れない）
+          const writePad = step * 0.25;
+          const prevSeg = si > 0 ? segments[si - 1] : null;
+          const isFirstInRun = seg.rubyIndex === 0 && prevSeg?.kind !== 'writeBox';
+
+          if (isFirstInRun) {
+            currentY += writePad;
+          }
+
           // currentY = 枠の上端
           const charToShow = this.showAnswer ? seg.char : undefined;
           this._drawWriteBox(boxLeft, currentY, boxSize, charToShow);
@@ -376,6 +387,13 @@ export class Tategaki {
           }
 
           currentY += boxSize;
+
+          // グループ末尾かつ次も writeBox でなければ後スペースを追加
+          const nextSeg = si < segments.length - 1 ? segments[si + 1] : null;
+          const isLastInRun = seg.rubyIndex === seg.rubyTotal - 1 && nextSeg?.kind !== 'writeBox';
+          if (isLastInRun) {
+            currentY += writePad;
+          }
           break;
         }
 
