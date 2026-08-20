@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { createCanvas, registerFont } from 'canvas';
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import { Tategaki } from './tategaki';
 
 // A4横 (landscape) @ 300dpi
@@ -8,9 +8,9 @@ const PAGE_WIDTH = Math.round(841.89 * DPI_SCALE);
 const PAGE_HEIGHT = Math.round(595.28 * DPI_SCALE);
 
 // 游教科書体を登録（小学校教科書と同じ字形）
-registerFont(
+GlobalFonts.registerFromPath(
   '/System/Library/AssetsV2/com_apple_MobileAsset_Font8/2b7cea021df336d26a89f699c8469a51c721e9a2.asset/AssetData/Kyokasho.ttc',
-  { family: 'YuKyokasho' },
+  'YuKyokasho',
 );
 
 function main(): void {
@@ -22,7 +22,7 @@ function main(): void {
   ctx.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
 
   // 縦書きライブラリを初期化
-  const tategaki = new Tategaki(ctx, {
+  const tategaki = new Tategaki(ctx as unknown as CanvasRenderingContext2D, {
     font: `${Math.round(13 * DPI_SCALE)}px "YuKyokasho"`,
     lineHeight: 1.0,
     columnGap: 1.9,
@@ -46,7 +46,7 @@ function main(): void {
   ], PAGE_WIDTH - Math.round(60 * DPI_SCALE), Math.round(50 * DPI_SCALE));
 
   // PNG として書き出す
-  const pngBuffer = canvas.toBuffer('image/png');
+  const pngBuffer = canvas.toBuffer('image/png') as Buffer;
   fs.writeFileSync('output.png', pngBuffer);
   console.log('output.png を生成しました');
 }

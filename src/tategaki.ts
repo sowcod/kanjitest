@@ -1,4 +1,3 @@
-import type { CanvasRenderingContext2D } from 'canvas';
 import { parse } from './parser';
 import type { Segment } from './parser';
 
@@ -27,6 +26,7 @@ const ROTATE_CHARS = new Set([
   '―', '─', '…', '‥',
   '～', '〜',
   '-', '－', '−',
+  'ー', 'ｰ',
 ]);
 
 // 右上に寄せる句読点（右寄せ＋上寄せ）
