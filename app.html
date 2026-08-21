@@ -131,6 +131,10 @@
     border-radius: 3px;
     padding: 1px 4px;
   }
+  #q-list li .badge.kind-badge {
+    color: #4338ca;
+    background: #eef2ff;
+  }
   #q-list li:hover { background: #f9fafb; }
   #q-list li.selected { background: #dbeafe; }
   #q-list:focus li.selected { background: #bfdbfe; outline: 1px solid #3b82d4; }
@@ -351,11 +355,23 @@
     border-bottom: 1px solid #f3f4f6;
     cursor: pointer;
     font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #h-list li .h-label {
+    flex: 1 1 auto;
+    min-width: 0;
   }
   #h-list li .h-count {
     display: block;
     font-size: 11px;
     color: #6b7280;
+  }
+  #h-list li .h-delete-btn {
+    flex: 0 0 auto;
+    font-size: 11px;
+    padding: 2px 6px;
   }
   #h-list li:hover { background: #f9fafb; }
   #h-list li.selected { background: #dbeafe; }
@@ -372,6 +388,9 @@
     min-width: 0;
     padding: 12px;
     gap: 8px;
+  }
+  .h-detail-controls {
+    flex: 0 0 auto;
   }
   #h-warnings {
     flex: 0 0 auto;
@@ -470,6 +489,12 @@
       <label>下位学年の復習割合:
         <input type="number" id="t-review-ratio" min="0" max="1" step="0.1">
       </label>
+      <label>読み問題の割合:
+        <input type="number" id="t-read-ratio" min="0" max="1" step="0.1">
+      </label>
+      <label>送り仮名問題の割合:
+        <input type="number" id="t-okurigana-ratio" min="0" max="1" step="0.1">
+      </label>
       <label>直近何回分を重複判定に使うか:
         <input type="number" id="t-history-count" min="1" step="1">
       </label>
@@ -490,6 +515,9 @@
       <ul id="h-list"></ul>
     </div>
     <div class="h-preview-pane">
+      <div class="h-detail-controls" id="h-detail-controls" style="display:none">
+        <button class="btn" id="h-reprint-btn">この回をもう一度印刷する</button>
+      </div>
       <div id="h-warnings"></div>
       <div id="h-empty">左の一覧からテストを選ぶと、解答（赤字）がここに表示されます。</div>
       <div id="h-preview-wrap" style="display:none">
@@ -503,7 +531,7 @@
 <script type="module">
   import { Tategaki } from './dist/browser/tategaki.js';
   import {
-    listQuestions, saveQuestion, deleteQuestion, plainText, getQuestion,
+    listQuestions, saveQuestion, deleteQuestion, plainText, getQuestion, questionKinds,
   } from './dist/browser/questionStore.js';
   import { GRADE_KANJI } from './dist/browser/kanjiData.js';
   import {
@@ -511,12 +539,18 @@
     advanceGrade, setCurrentGrade, computeLearnedKanjiSet,
   } from './dist/browser/learnedKanjiStore.js';
   import { loadSettings, saveSettings } from './dist/browser/settingsStore.js';
-  import { recordTest, countRecentUses, loadHistory, formatTestLabel } from './dist/browser/testHistoryStore.js';
+  import {
+    recordTest, countRecentUses, loadHistory, formatTestLabel, deleteHistoryEntry,
+  } from './dist/browser/testHistoryStore.js';
   import { selectQuestions, assignColumns } from './dist/browser/testGenerator.js';
   import { renderPageToCanvas, generateTestPdf, openPdfInNewTab } from './dist/browser/pdfExport.js';
 
   const DPR = 2;
   const FONT_NAME = '游教科書体';
+  const KIND_LABELS = { write: '書き', read: '読み', okurigana: '送り仮名' };
+  function questionKindLabel(text) {
+    return questionKinds(text).map(k => KIND_LABELS[k]).join('+');
+  }
 
   // ─────────────────────────────────────────────
   // タブ切り替え
@@ -573,10 +607,17 @@
       li.dataset.id = q.id;
       const label = document.createElement('span');
       label.textContent = plainText(q.text) || '(空)';
+      li.appendChild(label);
+      const kindLabel = questionKindLabel(q.text);
+      if (kindLabel) {
+        const kindBadge = document.createElement('span');
+        kindBadge.className = 'badge kind-badge';
+        kindBadge.textContent = kindLabel;
+        li.appendChild(kindBadge);
+      }
       const badge = document.createElement('span');
       badge.className = 'badge';
       badge.textContent = q.weight === 2 ? '長め' : '通常';
-      li.appendChild(label);
       li.appendChild(badge);
       if (i === selectedIndex) li.classList.add('selected');
       li.addEventListener('click', () => {
@@ -776,6 +817,8 @@
   // テスト生成・印刷タブ
   // ─────────────────────────────────────────────
   const tReviewRatio = document.getElementById('t-review-ratio');
+  const tReadRatio = document.getElementById('t-read-ratio');
+  const tOkuriganaRatio = document.getElementById('t-okurigana-ratio');
   const tHistoryCount = document.getElementById('t-history-count');
   const tGenerateBtn = document.getElementById('t-generate-btn');
   const tPdfBtn = document.getElementById('t-pdf-btn');
@@ -789,17 +832,23 @@
   function renderTestControls() {
     const settings = loadSettings();
     tReviewRatio.value = String(settings.reviewRatio);
+    tReadRatio.value = String(settings.readRatio);
+    tOkuriganaRatio.value = String(settings.okuriganaRatio);
     tHistoryCount.value = String(settings.recentHistoryCount);
   }
 
   function persistTestSettings() {
     const settings = loadSettings();
     const reviewRatio = Math.min(1, Math.max(0, Number(tReviewRatio.value) || 0));
+    const readRatio = Math.min(1, Math.max(0, Number(tReadRatio.value) || 0));
+    const okuriganaRatio = Math.min(1, Math.max(0, Number(tOkuriganaRatio.value) || 0));
     const recentHistoryCount = Math.max(1, Math.round(Number(tHistoryCount.value) || 1));
-    saveSettings({ ...settings, reviewRatio, recentHistoryCount });
+    saveSettings({ ...settings, reviewRatio, readRatio, okuriganaRatio, recentHistoryCount });
   }
 
   tReviewRatio.addEventListener('change', persistTestSettings);
+  tReadRatio.addEventListener('change', persistTestSettings);
+  tOkuriganaRatio.addEventListener('change', persistTestSettings);
   tHistoryCount.addEventListener('change', persistTestSettings);
 
   function showWarnings(warnings) {
@@ -860,16 +909,24 @@
     tPdfBtn.disabled = false;
   }
 
+  /**
+   * 列レイアウトをPDF化して新しいタブで開き、履歴に記録する。
+   * テスト生成タブの初回出力・履歴確認タブからの再印刷の両方から使う共通処理。
+   */
+  async function exportColumnsAsPdf(columns) {
+    const ids = columns.flat().map(q => q.id);
+    const entry = recordTest(ids);
+    const label = formatTestLabel(entry.date);
+    const bytes = await generateTestPdf(columns, FONT_NAME, label);
+    openPdfInNewTab(bytes);
+  }
+
   async function exportPdf() {
     if (!currentColumns) return;
     tPdfBtn.disabled = true;
     tPdfBtn.textContent = '生成中…';
     try {
-      const ids = currentColumns.flat().map(q => q.id);
-      const entry = recordTest(ids);
-      const label = formatTestLabel(entry.date);
-      const bytes = await generateTestPdf(currentColumns, FONT_NAME, label);
-      openPdfInNewTab(bytes);
+      await exportColumnsAsPdf(currentColumns);
     } catch (e) {
       alert('PDFの生成に失敗しました: ' + e);
     } finally {
@@ -894,8 +951,21 @@
   const hPreviewWrap = document.getElementById('h-preview-wrap');
   const hPreview = document.getElementById('h-preview');
   const hPreviewCtx = hPreview.getContext('2d');
+  const hDetailControls = document.getElementById('h-detail-controls');
+  const hReprintBtn = document.getElementById('h-reprint-btn');
 
   let selectedHistoryEntry = null;
+  let selectedHistoryColumns = null; // 再印刷ボタン用に、直近描画した列レイアウトを保持する
+
+  function clearHistoryDetail() {
+    selectedHistoryEntry = null;
+    selectedHistoryColumns = null;
+    showHistoryWarnings([]);
+    hDetailControls.style.display = 'none';
+    hPreviewWrap.style.display = 'none';
+    hEmpty.textContent = '左の一覧からテストを選ぶと、解答（赤字）がここに表示されます。';
+    hEmpty.style.display = 'block';
+  }
 
   function renderHistoryList() {
     const history = [...loadHistory()].reverse(); // 新しい順
@@ -906,17 +976,31 @@
       empty.className = 'h-empty';
       empty.textContent = 'まだテストを生成していません。';
       hList.appendChild(empty);
+      clearHistoryDetail();
       return;
     }
     history.forEach(entry => {
       const li = document.createElement('li');
       const label = document.createElement('span');
+      label.className = 'h-label';
       label.textContent = formatTestLabel(entry.date);
       const count = document.createElement('span');
       count.className = 'h-count';
       count.textContent = `${entry.questionIds.length}問`;
+      label.appendChild(count);
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-danger h-delete-btn';
+      deleteBtn.textContent = '削除';
+      deleteBtn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        if (!confirm(`${formatTestLabel(entry.date)}の履歴を削除しますか？`)) return;
+        deleteHistoryEntry(entry.date);
+        if (selectedHistoryEntry && selectedHistoryEntry.date === entry.date) clearHistoryDetail();
+        renderHistoryList();
+      });
       li.appendChild(label);
-      li.appendChild(count);
+      li.appendChild(deleteBtn);
+      if (selectedHistoryEntry && selectedHistoryEntry.date === entry.date) li.classList.add('selected');
       li.addEventListener('click', () => {
         [...hList.children].forEach(c => c.classList.remove('selected'));
         li.classList.add('selected');
@@ -953,6 +1037,8 @@
       hEmpty.textContent = 'この回の問題はすべて削除されているため表示できません。';
       hEmpty.style.display = 'block';
       hPreviewWrap.style.display = 'none';
+      hDetailControls.style.display = 'none';
+      selectedHistoryColumns = null;
       return;
     }
 
@@ -962,9 +1048,11 @@
     const measureTategaki = new Tategaki(measureCtx, { font: `32px "${FONT_NAME}"`, lineHeight: 1.0 });
     const measureHeight = text => measureTategaki.measureText(text).height;
     const { columns } = assignColumns(found, measureHeight, settings.slotsPerColumn);
+    selectedHistoryColumns = columns;
 
     hEmpty.style.display = 'none';
     hPreviewWrap.style.display = 'flex';
+    hDetailControls.style.display = 'block';
 
     const A4_RATIO = 841.89 / 595.28;
     const cssWidth = Math.min(560, Math.max(hPreviewWrap.clientWidth - 32, 300));
@@ -979,6 +1067,21 @@
   }
 
   new ResizeObserver(() => { if (selectedHistoryEntry) drawHistoryDetail(selectedHistoryEntry); }).observe(hPreviewWrap);
+
+  hReprintBtn.addEventListener('click', async () => {
+    if (!selectedHistoryColumns) return;
+    hReprintBtn.disabled = true;
+    hReprintBtn.textContent = '生成中…';
+    try {
+      await exportColumnsAsPdf(selectedHistoryColumns);
+      renderHistoryList();
+    } catch (e) {
+      alert('PDFの生成に失敗しました: ' + e);
+    } finally {
+      hReprintBtn.disabled = false;
+      hReprintBtn.textContent = 'この回をもう一度印刷する';
+    }
+  });
 </script>
 </body>
 </html>

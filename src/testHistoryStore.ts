@@ -39,6 +39,12 @@ export function formatTestLabel(dateIso: string): string {
   return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** 指定した日時(=一意キー)の履歴エントリを削除する */
+export function deleteHistoryEntry(date: string): void {
+  const history = loadHistory().filter(e => e.date !== date);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+}
+
 /**
  * 直近 `recentCount` 回のテストで各問題IDが何回出題されたかを数える。
  * テスト選出時の重み付け（出現回数が多いほど選ばれにくくする）に使用する。

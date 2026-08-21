@@ -176,3 +176,56 @@ interface TestHistoryEntry {
 - [x] 履歴確認タブ(`app.html`): 履歴一覧・解答(朱色)プレビューの実装
 - [x] `npm run build:browser`・`npm run dev` 再確認(コンパイルエラーなし)
 - [x] ブラウザ動作確認(Playwright): PDFが1ページのみになったこと・ラベル印字・履歴一覧表示・履歴からの解答表示(赤字)まで確認済み
+
+---
+
+## 6. 運用上の困りごと対応（2026-08）
+
+実際に運用してみて出てきた5つの困りごとへの対応。既存挙動（比率設定なしなら今までと同じ選出結果になる）を壊さない追加・拡張として実装した。
+
+### 6-1. 履歴の削除機能
+- `TestHistoryEntry.date`（ISO文字列、既存の一意キー）でフィルタして保存し直すだけの単純な実装（`testHistoryStore.deleteHistoryEntry(date)`）。
+- 削除した回が選択中だった場合は詳細プレビュー（`#h-detail-controls`／`#h-preview-wrap`）を隠し、`#h-empty` の既定メッセージに戻す（`clearHistoryDetail()`）。
+
+### 6-2. 同じ問題セットでの再印刷
+- テスト生成タブの `exportPdf()` から `exportColumnsAsPdf(columns)`（`recordTest` → ラベル生成 → `generateTestPdf` → `openPdfInNewTab`）を切り出し、履歴確認タブの「この回をもう一度印刷する」ボタンから共有した。
+- **「もう一度やる」は新しい履歴エントリとして記録する**（同じラベルを再利用すると印刷物と画面表示の対応付けが崩れるため）。再印刷後に選択状態は元のエントリのまま維持する（再印刷＝別の実施回として扱うが、直前まで見ていた解答プレビューはそのまま見られるようにする）。
+- 詳細プレビュー描画時（`drawHistoryDetail`）に組み立てた `columns`（`assignColumns()` の結果）を `selectedHistoryColumns` として保持し、再印刷ボタンはこれをそのまま `exportColumnsAsPdf` に渡す（列再構築ロジックを二重に書かない）。
+
+### 6-3. 問題番号（①②③…）
+- `renderPageToCanvas()` は画面プレビュー（テスト生成タブ・履歴確認タブ）とPDF出力の3箇所すべてから共通で呼ばれているため、この関数1箇所に丸数字描画を追加するだけで全箇所に反映される。
+- 描画順（列は右端`i=0`から左へ、列内は上から下）が縦書きの自然な読み順と既に一致していたため、既存ループにカウンタを1つ足すだけで採番できた（並べ替え不要）。
+- `circledNumber(n)`: 1〜20は Unicode `①`〜`⑳`（U+2460〜）、21〜35は `㉑`〜`㉟`（U+3251〜）、36〜50は `㊱`〜`㊿`（U+32B1〜）、それ以上は `"n."` にフォールバック（通常運用の10問程度では発生しない想定）。
+- `showAnswer` の値に関わらず常に番号を振る（採点時に「③番が違う」と言えるようにするのが目的なので、空欄側・解答側の両方に必要）。
+
+### 6-4. 問題一覧での種別表示
+- `questionStore.questionKinds(text)` を追加: `writeBox`→'write'（書き）、`readBox`→'read'（読み）、`bracketBox`→'okurigana'（送り仮名）。複数種別を含む問題（複合問題）はそれぞれ含まれる。
+- `app.html` 一覧行に種別バッジを追加し、複数なら `+` で連結（例:「書き+読み」）。種別が1つもない問題（通常ルビのみ）にはバッジを表示しない。
+
+### 6-5. 出題タイプの割合設定
+- `Settings` に `readRatio`/`okuriganaRatio`（既定 0）を追加。書き問題比率は独立入力にせず「残り」として自動算出する設計にした（3つ目の入力を設けると合計が1にならない不整合が起こり得るため）。
+- `selectQuestions()` の学年バランス選出（`reviewRatio`）の**前段**に、出題タイプのニッチ枠を優先選出するステージを追加した:
+  1. `okuriganaPool`/`readPool`（`questionKinds` でフィルタ）をそれぞれ既存の履歴重み付け（`weightedShuffle`）でシャッフル
+  2. `okuriganaTarget = round(total * okuriganaRatio)`、`readTarget = round(total * readRatio)` を算出
+  3. `fillGreedy` で送り仮名枠 → 読み枠の順に埋める。**送り仮名枠で埋まらなかった分は読み枠に繰り越す**（既存の `reviewTarget`/`currentTarget` 間の繰り越しパターンをそのまま再利用した `remainingWeight` ロールオーバー）
+  4. ここで使った重み `nicheUsed` を `total` から引いた `gradeBudget` を、既存の学年バランス選出（`reviewTarget`/`currentTarget`）の予算として渡す（`total` の代わり）
+- **回帰なしの確認**: `readRatio = okuriganaRatio = 0`（既定値）のとき `nicheUsed` は常に0になり、`gradeBudget = total` となって既存の選出結果と完全に一致する（算術的に保証されるため、Playwrightでの動作確認でも規定値ケースを個別に再検証済み）。
+- 最終手段（ルール2を緩めて埋める既存のベストエフォートステップ）の候補プールに `okuriganaPool`/`readPool` も含め、選出漏れを減らした。
+
+### ファイル
+- `src/testHistoryStore.ts`: `deleteHistoryEntry()` 追加
+- `src/questionStore.ts`: `QuestionKind`／`questionKinds()` 追加
+- `src/settingsStore.ts`: `readRatio`／`okuriganaRatio` 追加（既定0）
+- `src/testGenerator.ts`: `selectQuestions()` に種別ニッチ枠の優先選出を追加
+- `src/pdfExport.ts`: `renderPageToCanvas()` に丸数字描画・`circledNumber()` 追加
+- `app.html`: 履歴削除ボタン／再印刷ボタン／問題一覧の種別バッジ／読み・送り仮名割合の入力欄を追加。`exportPdf` を `exportColumnsAsPdf(columns)` として再利用可能に切り出し
+
+### ステータス
+- [x] `src/testHistoryStore.ts`: `deleteHistoryEntry()`
+- [x] `src/questionStore.ts`: `QuestionKind`／`questionKinds()`
+- [x] `src/settingsStore.ts`: `readRatio`／`okuriganaRatio`
+- [x] `src/testGenerator.ts`: 種別ニッチ枠選出（既定0での回帰なしを算術的に確認）
+- [x] `src/pdfExport.ts`: 丸数字描画
+- [x] `app.html`: 履歴削除・再印刷・種別バッジ・割合入力欄
+- [x] `npm run build:browser`・`npm run dev` 確認（コンパイルエラーなし）
+- [x] ブラウザ動作確認(Playwright): 問題種別バッジ表示・割合設定の永続化・プレビューでの丸数字表示・履歴からの再印刷（新規履歴エントリ作成）・履歴削除（選択中エントリの削除でプレビューが隠れること含む）まで確認済み

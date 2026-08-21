@@ -115,6 +115,24 @@ export function bodyKanji(text: string): Set<string> {
   return result;
 }
 
+export type QuestionKind = 'write' | 'read' | 'okurigana';
+
+/**
+ * 問題テキストに含まれる出題種別（複数あれば複合問題）。
+ * writeBox（書き取り枠）→ 'write'、readBox（読み取り枠）→ 'read'、
+ * bracketBox（送り仮名付き書き取り枠）→ 'okurigana'。
+ */
+export function questionKinds(text: string): QuestionKind[] {
+  const { segments } = parse(text);
+  const kinds = new Set<QuestionKind>();
+  for (const seg of segments) {
+    if (seg.kind === 'writeBox') kinds.add('write');
+    else if (seg.kind === 'readBox') kinds.add('read');
+    else if (seg.kind === 'bracketBox') kinds.add('okurigana');
+  }
+  return [...kinds];
+}
+
 /** 問題テキストに含まれるすべての漢字（出題対象＋文中）を返す。漢字範囲チェックに使用。 */
 export function allKanji(text: string): Set<string> {
   const result = targetKanji(text);

@@ -18,6 +18,18 @@ const PAGE_HEIGHT_PX = Math.round(A4_HEIGHT_PT * DPI_SCALE);
 const NUM_COLUMNS = 5;
 
 /**
+ * 問題番号を丸数字の文字列にする。
+ * 1〜20は①〜⑳、21〜35は㉑〜㉟、36〜50は㊱〜㊿を使い、それ以上は "n." にフォールバックする
+ * （通常運用の10問程度では発生しないが、安全のため）。
+ */
+function circledNumber(n: number): string {
+  if (n >= 1 && n <= 20) return String.fromCodePoint(0x2460 + (n - 1));
+  if (n >= 21 && n <= 35) return String.fromCodePoint(0x3251 + (n - 21));
+  if (n >= 36 && n <= 50) return String.fromCodePoint(0x32b1 + (n - 36));
+  return `${n}.`;
+}
+
+/**
  * A4比率のCanvasに5列レイアウトを描画する。
  * `pageWidthPx`/`pageHeightPx` を変えることで、画面プレビュー（低解像度）と
  * PDF出力（300dpi相当）の両方で同じレイアウトロジックを共有できる。
@@ -50,6 +62,12 @@ export function renderPageToCanvas(
 
   const usableWidth = pageWidthPx - marginH * 2;
   const columnStep = usableWidth / (NUM_COLUMNS - 1);
+  const numberFontSize = Math.round(fontSize * 0.55);
+  const numberGap = Math.round(4 * scale);
+
+  // 列は右端(i=0)から左へ、列内は上から下へ描画される。これは縦書きの自然な読み順
+  // （右→左、上→下）と一致するため、この描画順のまま①②③…と採番する。
+  let qNumber = 1;
 
   for (let i = 0; i < columns.length && i < NUM_COLUMNS; i++) {
     const cx = pageWidthPx - marginH - i * columnStep;
@@ -58,6 +76,16 @@ export function renderPageToCanvas(
 
     for (let j = 0; j < group.length; j++) {
       const q = group[j];
+
+      ctx.save();
+      ctx.font = `${numberFontSize}px sans-serif`;
+      ctx.fillStyle = '#555555';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(circledNumber(qNumber), cx, currentY - numberGap);
+      ctx.restore();
+      qNumber++;
+
       tategaki.fillText(q.text, cx, currentY);
       const { height } = tategaki.measureText(q.text);
       currentY += height;

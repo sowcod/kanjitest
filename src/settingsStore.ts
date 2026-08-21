@@ -8,6 +8,10 @@ export interface Settings {
   questionsPerTest: number;
   /** 1列あたりの問題数（weight単位の合計）。既定 2。 */
   slotsPerColumn: number;
+  /** 読み問題の目標割合（0〜1）。既定 0（基本的に書き問題のみ出す運用に合わせる）。 */
+  readRatio: number;
+  /** 送り仮名問題の目標割合（0〜1）。既定 0。 */
+  okuriganaRatio: number;
 }
 
 const STORAGE_KEY = 'kanji-test-settings';
@@ -17,6 +21,8 @@ const DEFAULT_SETTINGS: Settings = {
   recentHistoryCount: 10,
   questionsPerTest: 10,
   slotsPerColumn: 2,
+  readRatio: 0,
+  okuriganaRatio: 0,
 };
 
 export function loadSettings(): Settings {

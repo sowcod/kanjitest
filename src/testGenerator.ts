@@ -1,4 +1,4 @@
-import { Question, targetKanji, bodyKanji, allKanji, testedKanji } from './questionStore.js';
+import { Question, targetKanji, bodyKanji, allKanji, testedKanji, questionKinds } from './questionStore.js';
 import { kanjiGrade, Grade } from './kanjiData.js';
 import { Settings } from './settingsStore.js';
 
@@ -79,9 +79,10 @@ function fillGreedy(
  * 登録済み問題からテスト1回分（重み合計 `settings.questionsPerTest`）を選出する。
  *
  * 1. 習った漢字の範囲内の問題のみを候補にする（ルール1）
- * 2. 現学年プールと下位学年プールに分け、下位学年を `reviewRatio` の割合で混ぜる
- * 3. 出題対象漢字が他の問題の文中に出てこないよう重複を避けつつ選出する（ルール2, できるだけ）
- * 4. 重複を避けきれない／問題が足りない場合は警告を返しつつベストエフォートで選出する
+ * 2. 出題タイプ（読み／送り仮名）のニッチ枠を `readRatio`/`okuriganaRatio` の割合で優先的に確保する
+ * 3. 残り予算を現学年プールと下位学年プールに分け、下位学年を `reviewRatio` の割合で混ぜる
+ * 4. 出題対象漢字が他の問題の文中に出てこないよう重複を避けつつ選出する（ルール2, できるだけ）
+ * 5. 重複を避けきれない／問題が足りない場合は警告を返しつつベストエフォートで選出する
  */
 export function selectQuestions(
   questions: Question[],
@@ -98,6 +99,29 @@ export function selectQuestions(
     return { selected: [], warnings };
   }
 
+  const total = settings.questionsPerTest;
+
+  // ── 出題タイプ（読み／送り仮名）のニッチ枠を先に確保する ──
+  // readRatio/okuriganaRatio が既定値0の場合、以降の nicheUsed は常に0になり、
+  // 学年バランス選出に渡る予算は total のまま（既存挙動と完全に一致する）。
+  const okuriganaPool = weightedShuffle(
+    eligible.filter(q => questionKinds(q.text).includes('okurigana')),
+    recentUses,
+  );
+  const readPool = weightedShuffle(
+    eligible.filter(q => questionKinds(q.text).includes('read')),
+    recentUses,
+  );
+  const okuriganaTarget = Math.round(total * settings.okuriganaRatio);
+  const readTarget = Math.round(total * settings.readRatio);
+
+  const nicheStep1 = fillGreedy(okuriganaPool, [], okuriganaTarget, true);
+  // 送り仮名枠が埋まらなかった分は読み枠に繰り越す
+  const nicheStep2 = fillGreedy(readPool, nicheStep1.selected, readTarget + nicheStep1.remainingWeight, true);
+  const nicheUsed = okuriganaTarget + readTarget - nicheStep2.remainingWeight;
+
+  const gradeBudget = total - nicheUsed;
+
   const reviewPool = weightedShuffle(
     eligible.filter(q => questionGrade(q, currentGrade) < currentGrade),
     recentUses,
@@ -107,11 +131,10 @@ export function selectQuestions(
     recentUses,
   );
 
-  const total = settings.questionsPerTest;
-  const reviewTarget = Math.round(total * settings.reviewRatio);
-  const currentTarget = total - reviewTarget;
+  const reviewTarget = Math.round(gradeBudget * settings.reviewRatio);
+  const currentTarget = gradeBudget - reviewTarget;
 
-  const step1 = fillGreedy(reviewPool, [], reviewTarget, true);
+  const step1 = fillGreedy(reviewPool, nicheStep2.selected, reviewTarget, true);
   // 下位学年プールで埋まらなかった分は現学年プールで埋め合わせる
   const step2 = fillGreedy(currentPool, step1.selected, currentTarget + step1.remainingWeight, true);
 
@@ -120,7 +143,8 @@ export function selectQuestions(
 
   if (remaining > 0) {
     // ベストエフォート: ルール2（本文との重複回避）を緩めて残りの候補から埋める
-    const rest = [...reviewPool, ...currentPool].filter(q => !selected.some(s => s.id === q.id));
+    const rest = [...okuriganaPool, ...readPool, ...reviewPool, ...currentPool]
+      .filter(q => !selected.some(s => s.id === q.id));
     const before = selected.length;
     const step3 = fillGreedy(rest, selected, remaining, false);
     selected = step3.selected;
