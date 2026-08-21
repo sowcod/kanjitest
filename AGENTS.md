@@ -1,1 +1,1 @@
-コードの修正をしたら `npm run dev && npm run build:browser` を自動で実行すること。
+コードの修正をして人間に報告するときは `npm run dev && npm run build:browser` を実行すること。
