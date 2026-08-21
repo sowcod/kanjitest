@@ -91,15 +91,6 @@ export function renderPageToCanvas(
       currentY += height;
 
       if (j < group.length - 1) {
-        const lineY = currentY + rowGap / 2;
-        ctx.save();
-        ctx.strokeStyle = '#bbbbbb';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(cx - fontSize * 1.5, lineY);
-        ctx.lineTo(cx + fontSize * 1.5, lineY);
-        ctx.stroke();
-        ctx.restore();
         currentY += rowGap;
       }
     }

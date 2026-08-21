@@ -116,12 +116,16 @@
     border-bottom: 1px solid #f3f4f6;
     cursor: pointer;
     font-size: 13px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+  #q-list li .q-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   #q-list li .badge {
     flex: 0 0 auto;
@@ -278,24 +282,34 @@
 
   /* ── テスト生成タブ ── */
   #tab-test {
-    flex-direction: column;
+    flex-direction: row;
     padding: 16px;
-    gap: 12px;
+    gap: 16px;
     overflow: hidden;
   }
   .t-controls {
-    flex: 0 0 auto;
+    flex: 0 0 200px;
     display: flex;
-    align-items: center;
-    gap: 16px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
     font-size: 13px;
-    flex-wrap: wrap;
+    overflow-y: auto;
   }
-  .t-controls label { display: flex; align-items: center; gap: 4px; }
+  .t-controls label { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
   .t-controls input[type="number"] {
-    width: 64px;
+    width: 100%;
     padding: 4px 6px;
     font-size: 13px;
+    box-sizing: border-box;
+  }
+  .t-main {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    overflow: hidden;
   }
   #t-warnings {
     flex: 0 0 auto;
@@ -501,10 +515,12 @@
       <button class="btn btn-primary" id="t-generate-btn">テストを生成</button>
       <button class="btn" id="t-pdf-btn" disabled>PDFを開く(印刷用)</button>
     </div>
-    <div id="t-warnings"></div>
-    <div id="t-preview-wrap">
-      <div id="t-empty">「テストを生成」を押すとここにプレビューが表示されます。</div>
-      <canvas id="t-preview" style="display:none"></canvas>
+    <div class="t-main">
+      <div id="t-warnings"></div>
+      <div id="t-preview-wrap">
+        <div id="t-empty">「テストを生成」を押すとここにプレビューが表示されます。</div>
+        <canvas id="t-preview" style="display:none"></canvas>
+      </div>
     </div>
   </div>
 
@@ -547,7 +563,7 @@
 
   const DPR = 2;
   const FONT_NAME = '游教科書体';
-  const KIND_LABELS = { write: '書き', read: '読み', okurigana: '送り仮名' };
+  const KIND_LABELS = { write: '書', read: '読', okurigana: '送' };
   function questionKindLabel(text) {
     return questionKinds(text).map(k => KIND_LABELS[k]).join('+');
   }
@@ -606,6 +622,7 @@
       const li = document.createElement('li');
       li.dataset.id = q.id;
       const label = document.createElement('span');
+      label.className = 'q-label';
       label.textContent = plainText(q.text) || '(空)';
       li.appendChild(label);
       const kindLabel = questionKindLabel(q.text);
