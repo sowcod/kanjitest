@@ -1,0 +1,183 @@
+import { Question, targetKanji, bodyKanji, allKanji, testedKanji } from './questionStore.js';
+import { kanjiGrade, Grade } from './kanjiData.js';
+import { Settings } from './settingsStore.js';
+
+export interface SelectionResult {
+  selected: Question[];
+  warnings: string[];
+}
+
+function isSubset(sub: Set<string>, sup: Set<string>): boolean {
+  for (const x of sub) if (!sup.has(x)) return false;
+  return true;
+}
+
+/**
+ * 問題が「問うている」漢字の学年（学年バランスの判定に使用）。
+ * writeBox/bracketBox/readBox の対象漢字の最大学年。それが無ければ文中漢字の最大学年。
+ * どちらも配当表に無い場合は現学年扱いにする（フォールバック）。
+ */
+function questionGrade(q: Question, currentGrade: Grade): number {
+  const testedGrades = [...testedKanji(q.text)]
+    .map(ch => kanjiGrade(ch))
+    .filter((g): g is Grade => g !== null);
+  if (testedGrades.length > 0) return Math.max(...testedGrades);
+
+  const bodyGrades = [...bodyKanji(q.text)]
+    .map(ch => kanjiGrade(ch))
+    .filter((g): g is Grade => g !== null);
+  if (bodyGrades.length > 0) return Math.max(...bodyGrades);
+
+  return currentGrade;
+}
+
+/** 直近の出題回数が多いほど選ばれにくくする重み付きシャッフル（Efraimidis-Spirakis法） */
+function weightedShuffle(pool: Question[], recentUses: Map<string, number>): Question[] {
+  return pool
+    .map(q => {
+      const weight = 1 / (1 + (recentUses.get(q.id) ?? 0));
+      const key = Math.pow(Math.random(), 1 / weight);
+      return { q, key };
+    })
+    .sort((a, b) => b.key - a.key)
+    .map(x => x.q);
+}
+
+/** 出題対象漢字が他の選出済み問題の文中に出現していないか（vision.mdルール2） */
+function conflictsWithSelected(candidate: Question, selected: Question[]): boolean {
+  const candTarget = targetKanji(candidate.text);
+  const candBody = bodyKanji(candidate.text);
+  for (const s of selected) {
+    const sTarget = targetKanji(s.text);
+    const sBody = bodyKanji(s.text);
+    for (const ch of candTarget) if (sBody.has(ch)) return true;
+    for (const ch of sTarget) if (candBody.has(ch)) return true;
+  }
+  return false;
+}
+
+function fillGreedy(
+  candidates: Question[],
+  selected: Question[],
+  remainingWeight: number,
+  respectConflicts: boolean,
+): { selected: Question[]; remainingWeight: number } {
+  const result = [...selected];
+  let remaining = remainingWeight;
+  for (const cand of candidates) {
+    if (remaining <= 0) break;
+    if (result.some(q => q.id === cand.id)) continue;
+    if (cand.weight > remaining) continue;
+    if (respectConflicts && conflictsWithSelected(cand, result)) continue;
+    result.push(cand);
+    remaining -= cand.weight;
+  }
+  return { selected: result, remainingWeight: remaining };
+}
+
+/**
+ * 登録済み問題からテスト1回分（重み合計 `settings.questionsPerTest`）を選出する。
+ *
+ * 1. 習った漢字の範囲内の問題のみを候補にする（ルール1）
+ * 2. 現学年プールと下位学年プールに分け、下位学年を `reviewRatio` の割合で混ぜる
+ * 3. 出題対象漢字が他の問題の文中に出てこないよう重複を避けつつ選出する（ルール2, できるだけ）
+ * 4. 重複を避けきれない／問題が足りない場合は警告を返しつつベストエフォートで選出する
+ */
+export function selectQuestions(
+  questions: Question[],
+  learnedKanji: Set<string>,
+  currentGrade: Grade,
+  recentUses: Map<string, number>,
+  settings: Settings,
+): SelectionResult {
+  const warnings: string[] = [];
+  const eligible = questions.filter(q => isSubset(allKanji(q.text), learnedKanji));
+
+  if (eligible.length === 0) {
+    warnings.push('習った漢字の範囲内で使える問題がありません。問題を登録してください。');
+    return { selected: [], warnings };
+  }
+
+  const reviewPool = weightedShuffle(
+    eligible.filter(q => questionGrade(q, currentGrade) < currentGrade),
+    recentUses,
+  );
+  const currentPool = weightedShuffle(
+    eligible.filter(q => questionGrade(q, currentGrade) >= currentGrade),
+    recentUses,
+  );
+
+  const total = settings.questionsPerTest;
+  const reviewTarget = Math.round(total * settings.reviewRatio);
+  const currentTarget = total - reviewTarget;
+
+  const step1 = fillGreedy(reviewPool, [], reviewTarget, true);
+  // 下位学年プールで埋まらなかった分は現学年プールで埋め合わせる
+  const step2 = fillGreedy(currentPool, step1.selected, currentTarget + step1.remainingWeight, true);
+
+  let selected = step2.selected;
+  let remaining = step2.remainingWeight;
+
+  if (remaining > 0) {
+    // ベストエフォート: ルール2（本文との重複回避）を緩めて残りの候補から埋める
+    const rest = [...reviewPool, ...currentPool].filter(q => !selected.some(s => s.id === q.id));
+    const before = selected.length;
+    const step3 = fillGreedy(rest, selected, remaining, false);
+    selected = step3.selected;
+    remaining = step3.remainingWeight;
+    if (selected.length > before) {
+      warnings.push('出題対象の漢字が他の問題の本文と重複するのを完全には避けられませんでした。');
+    }
+  }
+
+  if (remaining > 0) {
+    warnings.push(
+      `問題数が不足しています。あと${remaining}問相当を登録してください（今回は問題${selected.length}件で生成します）。`,
+    );
+  }
+
+  return { selected, warnings };
+}
+
+export interface ColumnLayout {
+  /** 各列に格納される問題（weight=slotsPerColumn の問題は単独で1列を占有する） */
+  columns: Question[][];
+}
+
+/**
+ * 選出済みの問題をA4レイアウトの列に割り当てる。
+ *
+ * weight が `slotsPerColumn` に等しい問題（既定: weight=2）は列を単独で占有する。
+ * 残りの問題は高さを計測し、降順ソート後に最大×最小のペアを作ることで
+ * 各列の合計高さの分散を最小化する（スワップペアリング）。
+ *
+ * @param measureHeight - 問題テキスト1件の縦幅(px)を返す関数（Tategaki.measureText().height を渡す）
+ */
+export function assignColumns(
+  selected: Question[],
+  measureHeight: (text: string) => number,
+  slotsPerColumn: number,
+): ColumnLayout {
+  const wide = selected.filter(q => q.weight >= slotsPerColumn);
+  const narrow = selected.filter(q => q.weight < slotsPerColumn);
+
+  const columns: Question[][] = wide.map(q => [q]);
+
+  const withHeight = narrow
+    .map(q => ({ q, height: measureHeight(q.text) }))
+    .sort((a, b) => b.height - a.height);
+
+  let lo = 0;
+  let hi = withHeight.length - 1;
+  while (lo < hi) {
+    columns.push([withHeight[lo].q, withHeight[hi].q]);
+    lo++;
+    hi--;
+  }
+  if (lo === hi) {
+    // 奇数個余った場合の保険（slotsPerColumn=2 の通常運用では発生しない）
+    columns.push([withHeight[lo].q]);
+  }
+
+  return { columns };
+}

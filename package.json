@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "build:browser": "tsc -p tsconfig.browser.json",
+    "build:browser": "tsc -p tsconfig.browser.json && cp node_modules/pdf-lib/dist/pdf-lib.esm.min.js dist/browser/pdf-lib.esm.min.js",
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"

@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>漢字テスト作成</title>
+<script type="importmap">
+{
+  "imports": {
+    "pdf-lib": "./dist/browser/pdf-lib.esm.min.js"
+  }
+}
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    background: #f3f4f6;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+    color: #1f2328;
+  }
+
+  /* ── タブ ── */
+  #tabs {
+    flex: 0 0 auto;
+    display: flex;
+    background: #1f2937;
+    border-bottom: 1px solid #111827;
+  }
+  #tabs button {
+    flex: 0 0 auto;
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    color: #9ca3af;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  #tabs button.active {
+    color: #fff;
+    background: #374151;
+    border-bottom: 2px solid #3b82d4;
+  }
+
+  #tab-content {
+    flex: 1 1 0;
+    overflow: hidden;
+    display: flex;
+  }
+  .tab-panel {
+    flex: 1 1 0;
+    display: none;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .tab-panel.active { display: flex; }
+
+  button {
+    font-family: inherit;
+  }
+  .btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    color: #1f2328;
+    cursor: pointer;
+  }
+  .btn:hover { background: #f3f4f6; }
+  .btn:disabled { color: #9ca3af; cursor: default; background: #f3f4f6; }
+  .btn-primary {
+    background: #3b82d4;
+    border-color: #3b82d4;
+    color: #fff;
+  }
+  .btn-primary:hover { background: #2f6cb3; }
+  .btn-danger {
+    color: #b91c1c;
+    border-color: #fca5a5;
+  }
+  .btn-danger:hover { background: #fef2f2; }
+
+  /* ── 問題管理タブ ── */
+  #tab-questions { }
+  .q-list-pane {
+    flex: 0 0 280px;
+    border-right: 1px solid #d1d5db;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .q-list-header {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #6b7280;
+  }
+  #q-list {
+    flex: 1 1 0;
+    overflow-y: auto;
+    list-style: none;
+    outline: none;
+  }
+  #q-list li {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f3f4f6;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #q-list li .badge {
+    flex: 0 0 auto;
+    font-size: 10px;
+    color: #6b7280;
+    background: #f3f4f6;
+    border-radius: 3px;
+    padding: 1px 4px;
+  }
+  #q-list li:hover { background: #f9fafb; }
+  #q-list li.selected { background: #dbeafe; }
+  #q-list:focus li.selected { background: #bfdbfe; outline: 1px solid #3b82d4; }
+  #q-list .q-empty {
+    padding: 16px 12px;
+    color: #9ca3af;
+    font-size: 12px;
+    cursor: default;
+  }
+
+  .q-edit-pane {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 12px;
+    gap: 8px;
+  }
+  .q-edit-pane label {
+    font-size: 11px;
+    color: #6b7280;
+  }
+  #q-editor {
+    width: 100%;
+    height: 90px;
+    resize: vertical;
+    font-family: "Menlo", "Monaco", "Consolas", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 6px 8px;
+    outline: none;
+    background: #fafafa;
+  }
+  #q-editor:focus { border-color: #3b82d4; background: #fff; }
+
+  .q-form-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+  .q-form-row .spacer { flex: 1 1 auto; }
+
+  #q-error-bar {
+    display: none;
+    font-size: 12px;
+    color: #b91c1c;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-radius: 4px;
+    padding: 4px 8px;
+    white-space: pre-wrap;
+  }
+
+  .q-preview-wrap {
+    flex: 1 1 0;
+    overflow: auto;
+    background: #e5e7eb;
+    border-radius: 4px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 12px;
+  }
+  #q-preview {
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  }
+
+  /* ── 漢字範囲管理タブ ── */
+  #tab-kanji {
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+    overflow-y: auto;
+  }
+  .k-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 14px;
+  }
+  .k-header select {
+    font-size: 14px;
+    padding: 4px 6px;
+  }
+  .k-hint {
+    font-size: 12px;
+    color: #6b7280;
+  }
+  .k-grade-block {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .k-grade-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #374151;
+  }
+  .k-chars {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .k-char {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    user-select: none;
+  }
+  .k-char.learned {
+    background: #dbeafe;
+    border-color: #93c5fd;
+    color: #1e40af;
+  }
+  .k-char.locked-past {
+    background: #f3f4f6;
+    border-color: #e5e7eb;
+    color: #9ca3af;
+    cursor: default;
+  }
+  .k-char.locked-future {
+    background: #fff;
+    border-color: #f3f4f6;
+    color: #d1d5db;
+    cursor: default;
+  }
+
+  /* ── テスト生成タブ ── */
+  #tab-test {
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+    overflow: hidden;
+  }
+  .t-controls {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+  .t-controls label { display: flex; align-items: center; gap: 4px; }
+  .t-controls input[type="number"] {
+    width: 64px;
+    padding: 4px 6px;
+    font-size: 13px;
+  }
+  #t-warnings {
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 4px;
+    padding: 6px 8px;
+    display: none;
+    white-space: pre-wrap;
+  }
+  #t-preview-wrap {
+    flex: 1 1 0;
+    overflow: auto;
+    background: #e5e7eb;
+    border-radius: 4px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 16px;
+  }
+  #t-preview {
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  }
+  #t-empty {
+    color: #9ca3af;
+    font-size: 13px;
+    padding: 32px;
+  }
+</style>
+</head>
+<body>
+
+<div id="tabs">
+  <button data-tab="questions" class="active">問題管理</button>
+  <button data-tab="kanji">漢字範囲管理</button>
+  <button data-tab="test">テスト生成・印刷</button>
+</div>
+
+<div id="tab-content">
+
+  <!-- ── 問題管理 ── -->
+  <div id="tab-questions" class="tab-panel active">
+    <div class="q-list-pane">
+      <div class="q-list-header">
+        <span>登録済み問題(<span id="q-count">0</span>件)</span>
+        <button class="btn" id="q-new-btn">新規 (Esc)</button>
+      </div>
+      <ul id="q-list" tabindex="0"></ul>
+    </div>
+    <div class="q-edit-pane">
+      <label for="q-editor">記法テキスト(1問=1行。Cmd/Ctrl+Enterで保存)</label>
+      <textarea id="q-editor" spellcheck="false" placeholder="例: 明日[あした]は &lt;遠&gt;[えん]足[そく]です。"></textarea>
+      <div class="q-form-row">
+        <label><input type="radio" name="q-weight" value="1" checked> 通常(1問分)</label>
+        <label><input type="radio" name="q-weight" value="2"> 長め(2問分・1列を単独で使う)</label>
+        <span class="spacer"></span>
+        <button class="btn btn-primary" id="q-save-btn">保存 (⌘/Ctrl+Enter)</button>
+        <button class="btn btn-danger" id="q-delete-btn" disabled>削除 (⌘/Ctrl+⌫)</button>
+      </div>
+      <div id="q-error-bar"></div>
+      <div class="q-preview-wrap">
+        <canvas id="q-preview"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 漢字範囲管理 ── -->
+  <div id="tab-kanji" class="tab-panel">
+    <div class="k-header">
+      <label>現在の学年:
+        <select id="k-grade">
+          <option value="1">1年</option>
+          <option value="2">2年</option>
+          <option value="3">3年</option>
+          <option value="4">4年</option>
+          <option value="5">5年</option>
+          <option value="6">6年</option>
+        </select>
+      </label>
+      <button class="btn" id="k-advance-btn">学年を進める(年度更新時に1回だけ)</button>
+    </div>
+    <p class="k-hint">
+      下の学年の漢字はすべて既習として扱われます。現学年の枠内で、これまでに習った漢字をクリックして登録してください
+      (もう一度クリックすると取り消せます)。
+    </p>
+    <div id="k-grade-lists"></div>
+  </div>
+
+  <!-- ── テスト生成・印刷 ── -->
+  <div id="tab-test" class="tab-panel">
+    <div class="t-controls">
+      <label>下位学年の復習割合:
+        <input type="number" id="t-review-ratio" min="0" max="1" step="0.1">
+      </label>
+      <label>直近何回分を重複判定に使うか:
+        <input type="number" id="t-history-count" min="1" step="1">
+      </label>
+      <button class="btn btn-primary" id="t-generate-btn">テストを生成</button>
+      <button class="btn" id="t-pdf-btn" disabled>PDFを開く(印刷用)</button>
+    </div>
+    <div id="t-warnings"></div>
+    <div id="t-preview-wrap">
+      <div id="t-empty">「テストを生成」を押すとここにプレビューが表示されます。</div>
+      <canvas id="t-preview" style="display:none"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+  import { Tategaki } from './dist/browser/tategaki.js';
+  import {
+    listQuestions, saveQuestion, deleteQuestion, plainText,
+  } from './dist/browser/questionStore.js';
+  import { GRADE_KANJI } from './dist/browser/kanjiData.js';
+  import {
+    loadLearnedKanjiState, addLearnedKanji, removeLearnedKanji,
+    advanceGrade, setCurrentGrade, computeLearnedKanjiSet,
+  } from './dist/browser/learnedKanjiStore.js';
+  import { loadSettings, saveSettings } from './dist/browser/settingsStore.js';
+  import { recordTest, countRecentUses } from './dist/browser/testHistoryStore.js';
+  import { selectQuestions, assignColumns } from './dist/browser/testGenerator.js';
+  import { renderPageToCanvas, generateTestPdf, openPdfInNewTab } from './dist/browser/pdfExport.js';
+
+  const DPR = 2;
+  const FONT_NAME = '游教科書体';
+
+  // ─────────────────────────────────────────────
+  // タブ切り替え
+  // ─────────────────────────────────────────────
+  const tabButtons = document.querySelectorAll('#tabs button');
+  const tabPanels = {
+    questions: document.getElementById('tab-questions'),
+    kanji: document.getElementById('tab-kanji'),
+    test: document.getElementById('tab-test'),
+  };
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabButtons.forEach(b => b.classList.remove('active'));
+      Object.values(tabPanels).forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      tabPanels[btn.dataset.tab].classList.add('active');
+      if (btn.dataset.tab === 'kanji') renderKanjiTab();
+      if (btn.dataset.tab === 'test') renderTestControls();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // 問題管理タブ
+  // ─────────────────────────────────────────────
+  const qList = document.getElementById('q-list');
+  const qCount = document.getElementById('q-count');
+  const qEditor = document.getElementById('q-editor');
+  const qSaveBtn = document.getElementById('q-save-btn');
+  const qDeleteBtn = document.getElementById('q-delete-btn');
+  const qNewBtn = document.getElementById('q-new-btn');
+  const qErrorBar = document.getElementById('q-error-bar');
+  const qPreview = document.getElementById('q-preview');
+  const qPreviewCtx = qPreview.getContext('2d');
+
+  let questions = [];
+  let editingId = null; // null = 新規作成モード
+  let selectedIndex = -1;
+
+  function refreshQuestionList() {
+    questions = listQuestions();
+    qCount.textContent = String(questions.length);
+    qList.innerHTML = '';
+    if (questions.length === 0) {
+      const empty = document.createElement('li');
+      empty.className = 'q-empty';
+      empty.textContent = '問題がまだありません。右側で新規作成してください。';
+      qList.appendChild(empty);
+      return;
+    }
+    questions.forEach((q, i) => {
+      const li = document.createElement('li');
+      li.dataset.id = q.id;
+      const label = document.createElement('span');
+      label.textContent = plainText(q.text) || '(空)';
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = q.weight === 2 ? '長め' : '通常';
+      li.appendChild(label);
+      li.appendChild(badge);
+      if (i === selectedIndex) li.classList.add('selected');
+      li.addEventListener('click', () => {
+        selectedIndex = i;
+        loadIntoEditor(q);
+        highlightSelected();
+      });
+      qList.appendChild(li);
+    });
+  }
+
+  function highlightSelected() {
+    [...qList.children].forEach((li, i) => li.classList.toggle('selected', i === selectedIndex));
+  }
+
+  function loadIntoEditor(q) {
+    editingId = q.id;
+    qEditor.value = q.text;
+    document.querySelector(`input[name="q-weight"][value="${q.weight}"]`).checked = true;
+    qDeleteBtn.disabled = false;
+    drawQuestionPreview();
+    qEditor.focus();
+  }
+
+  function startNew() {
+    editingId = null;
+    selectedIndex = -1;
+    qEditor.value = '';
+    document.querySelector('input[name="q-weight"][value="1"]').checked = true;
+    qDeleteBtn.disabled = true;
+    highlightSelected();
+    drawQuestionPreview();
+    qEditor.focus();
+  }
+
+  function currentWeight() {
+    return Number(document.querySelector('input[name="q-weight"]:checked').value);
+  }
+
+  function drawQuestionPreview() {
+    const text = qEditor.value.trim();
+    qErrorBar.style.display = 'none';
+
+    const cssWidth = Math.max(qPreview.parentElement.clientWidth - 32, 200);
+    const cssHeight = 260;
+    qPreview.style.width = cssWidth + 'px';
+    qPreview.style.height = cssHeight + 'px';
+    qPreview.width = cssWidth * DPR;
+    qPreview.height = cssHeight * DPR;
+
+    qPreviewCtx.fillStyle = '#ffffff';
+    qPreviewCtx.fillRect(0, 0, qPreview.width, qPreview.height);
+    if (!text) return;
+
+    try {
+      const fontSize = 17 * DPR;
+      const tategaki = new Tategaki(qPreviewCtx, { font: `${fontSize}px "${FONT_NAME}"`, lineHeight: 1.0 });
+      const marginV = 20 * DPR;
+      const startX = Math.round(qPreview.width / 2 + tategaki.measureText(text).width / 2);
+      tategaki.fillText(text, startX, marginV);
+    } catch (e) {
+      qErrorBar.textContent = String(e);
+      qErrorBar.style.display = 'block';
+    }
+  }
+
+  function saveCurrent() {
+    const text = qEditor.value.trim();
+    if (!text) return;
+    const saved = saveQuestion({ id: editingId ?? undefined, text, weight: currentWeight() });
+    editingId = saved.id;
+    qDeleteBtn.disabled = false;
+    refreshQuestionList();
+    selectedIndex = questions.findIndex(q => q.id === saved.id);
+    highlightSelected();
+  }
+
+  function deleteCurrent() {
+    if (!editingId) return;
+    if (!confirm('この問題を削除しますか？')) return;
+    deleteQuestion(editingId);
+    startNew();
+    refreshQuestionList();
+  }
+
+  qEditor.addEventListener('input', drawQuestionPreview);
+  new ResizeObserver(drawQuestionPreview).observe(qPreview.parentElement);
+
+  qEditor.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      saveCurrent();
+    } else if ((e.metaKey || e.ctrlKey) && e.key === 'Backspace') {
+      e.preventDefault();
+      deleteCurrent();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      startNew();
+    }
+  });
+
+  qList.addEventListener('keydown', e => {
+    if (questions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedIndex = Math.min(questions.length - 1, selectedIndex + 1);
+      highlightSelected();
+      qList.children[selectedIndex]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedIndex = Math.max(0, selectedIndex - 1);
+      highlightSelected();
+      qList.children[selectedIndex]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedIndex >= 0) loadIntoEditor(questions[selectedIndex]);
+    } else if ((e.metaKey || e.ctrlKey) && e.key === 'Backspace') {
+      e.preventDefault();
+      if (selectedIndex >= 0) {
+        editingId = questions[selectedIndex].id;
+        deleteCurrent();
+      }
+    }
+  });
+
+  qSaveBtn.addEventListener('click', saveCurrent);
+  qDeleteBtn.addEventListener('click', deleteCurrent);
+  qNewBtn.addEventListener('click', startNew);
+  document.querySelectorAll('input[name="q-weight"]').forEach(r => r.addEventListener('change', drawQuestionPreview));
+
+  refreshQuestionList();
+  drawQuestionPreview();
+
+  // ─────────────────────────────────────────────
+  // 漢字範囲管理タブ
+  // ─────────────────────────────────────────────
+  const kGradeSelect = document.getElementById('k-grade');
+  const kAdvanceBtn = document.getElementById('k-advance-btn');
+  const kGradeLists = document.getElementById('k-grade-lists');
+
+  function renderKanjiTab() {
+    const state = loadLearnedKanjiState();
+    kGradeSelect.value = String(state.currentGrade);
+    const learnedThisGrade = new Set(state.learnedThisGrade);
+
+    kGradeLists.innerHTML = '';
+    for (const g of [1, 2, 3, 4, 5, 6]) {
+      const block = document.createElement('div');
+      block.className = 'k-grade-block';
+      const title = document.createElement('div');
+      title.className = 'k-grade-title';
+      title.textContent = `${g}年生 (${GRADE_KANJI[g].length}字)` +
+        (g < state.currentGrade ? ' — すべて既習' : g > state.currentGrade ? ' — まだ先の学年' : ' — 現学年');
+      block.appendChild(title);
+
+      const chars = document.createElement('div');
+      chars.className = 'k-chars';
+      for (const ch of GRADE_KANJI[g]) {
+        const el = document.createElement('div');
+        el.className = 'k-char';
+        el.textContent = ch;
+        if (g < state.currentGrade) {
+          el.classList.add('locked-past');
+        } else if (g > state.currentGrade) {
+          el.classList.add('locked-future');
+        } else {
+          if (learnedThisGrade.has(ch)) el.classList.add('learned');
+          el.addEventListener('click', () => {
+            if (learnedThisGrade.has(ch)) {
+              removeLearnedKanji(ch);
+            } else {
+              addLearnedKanji([ch]);
+            }
+            renderKanjiTab();
+          });
+        }
+        chars.appendChild(el);
+      }
+      block.appendChild(chars);
+      kGradeLists.appendChild(block);
+    }
+  }
+
+  kGradeSelect.addEventListener('change', () => {
+    setCurrentGrade(Number(kGradeSelect.value));
+    renderKanjiTab();
+  });
+  kAdvanceBtn.addEventListener('click', () => {
+    if (!confirm('学年を1つ進めます。今学年の追加登録した漢字はリセットされます(下位学年としてすべて既習扱いになります)。よろしいですか？')) return;
+    advanceGrade();
+    renderKanjiTab();
+  });
+
+  renderKanjiTab();
+
+  // ─────────────────────────────────────────────
+  // テスト生成・印刷タブ
+  // ─────────────────────────────────────────────
+  const tReviewRatio = document.getElementById('t-review-ratio');
+  const tHistoryCount = document.getElementById('t-history-count');
+  const tGenerateBtn = document.getElementById('t-generate-btn');
+  const tPdfBtn = document.getElementById('t-pdf-btn');
+  const tWarnings = document.getElementById('t-warnings');
+  const tPreview = document.getElementById('t-preview');
+  const tEmpty = document.getElementById('t-empty');
+  const tPreviewCtx = tPreview.getContext('2d');
+
+  let currentColumns = null;
+
+  function renderTestControls() {
+    const settings = loadSettings();
+    tReviewRatio.value = String(settings.reviewRatio);
+    tHistoryCount.value = String(settings.recentHistoryCount);
+  }
+
+  function persistTestSettings() {
+    const settings = loadSettings();
+    const reviewRatio = Math.min(1, Math.max(0, Number(tReviewRatio.value) || 0));
+    const recentHistoryCount = Math.max(1, Math.round(Number(tHistoryCount.value) || 1));
+    saveSettings({ ...settings, reviewRatio, recentHistoryCount });
+  }
+
+  tReviewRatio.addEventListener('change', persistTestSettings);
+  tHistoryCount.addEventListener('change', persistTestSettings);
+
+  function showWarnings(warnings) {
+    if (warnings.length === 0) {
+      tWarnings.style.display = 'none';
+      return;
+    }
+    tWarnings.textContent = warnings.join('\n');
+    tWarnings.style.display = 'block';
+  }
+
+  function drawTestPreview(columns) {
+    const A4_RATIO = 841.89 / 595.28;
+    const cssWidth = Math.min(560, Math.max(tPreview.parentElement.clientWidth - 32, 300));
+    const cssHeight = cssWidth * A4_RATIO;
+    tPreview.style.width = cssWidth + 'px';
+    tPreview.style.height = cssHeight + 'px';
+
+    const rendered = renderPageToCanvas(columns, false, FONT_NAME, cssWidth * DPR, cssHeight * DPR);
+    tPreview.width = rendered.width;
+    tPreview.height = rendered.height;
+    tPreviewCtx.drawImage(rendered, 0, 0);
+  }
+
+  function generate() {
+    persistTestSettings();
+    const settings = loadSettings();
+    const learnedState = loadLearnedKanjiState();
+    const learnedSet = computeLearnedKanjiSet(learnedState);
+    const allQuestions = listQuestions();
+    const recentUses = countRecentUses(settings.recentHistoryCount);
+
+    const { selected, warnings } = selectQuestions(
+      allQuestions, learnedSet, learnedState.currentGrade, recentUses, settings,
+    );
+    showWarnings(warnings);
+
+    if (selected.length === 0) {
+      currentColumns = null;
+      tPdfBtn.disabled = true;
+      tPreview.style.display = 'none';
+      tEmpty.style.display = 'block';
+      return;
+    }
+
+    // 列の高さ計測用に、プレビューと同じフォントで測る(相対比較のみに使うため解像度は問わない)
+    const measureCanvas = document.createElement('canvas');
+    const measureCtx = measureCanvas.getContext('2d');
+    const measureTategaki = new Tategaki(measureCtx, { font: `32px "${FONT_NAME}"`, lineHeight: 1.0 });
+    const measureHeight = text => measureTategaki.measureText(text).height;
+
+    const { columns } = assignColumns(selected, measureHeight, settings.slotsPerColumn);
+    currentColumns = columns;
+
+    tEmpty.style.display = 'none';
+    tPreview.style.display = 'block';
+    drawTestPreview(columns);
+    tPdfBtn.disabled = false;
+  }
+
+  async function exportPdf() {
+    if (!currentColumns) return;
+    tPdfBtn.disabled = true;
+    tPdfBtn.textContent = '生成中…';
+    try {
+      const bytes = await generateTestPdf(currentColumns, FONT_NAME);
+      openPdfInNewTab(bytes);
+      const ids = currentColumns.flat().map(q => q.id);
+      recordTest(ids);
+    } catch (e) {
+      alert('PDFの生成に失敗しました: ' + e);
+    } finally {
+      tPdfBtn.disabled = false;
+      tPdfBtn.textContent = 'PDFを開く(印刷用)';
+    }
+  }
+
+  tGenerateBtn.addEventListener('click', generate);
+  tPdfBtn.addEventListener('click', exportPdf);
+  new ResizeObserver(() => { if (currentColumns) drawTestPreview(currentColumns); }).observe(tPreview.parentElement);
+
+  renderTestControls();
+</script>
+</body>
+</html>

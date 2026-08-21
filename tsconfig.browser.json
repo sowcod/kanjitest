@@ -12,6 +12,16 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src/parser.ts", "src/tategaki.ts"],
+  "include": [
+    "src/parser.ts",
+    "src/tategaki.ts",
+    "src/kanjiData.ts",
+    "src/questionStore.ts",
+    "src/learnedKanjiStore.ts",
+    "src/settingsStore.ts",
+    "src/testHistoryStore.ts",
+    "src/testGenerator.ts",
+    "src/pdfExport.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }
