@@ -100,17 +100,34 @@ interface TestHistoryEntry {
 ## 4. 印刷機能
 
 ### 決定事項
-- 既存の `Tategaki.showAnswer` オプション（実装済み・解答は朱色）をそのまま使い、テスト用（`showAnswer:false`）と解答用（`showAnswer:true`）の2種類のCanvasを生成する。
-- 生成したCanvasは `toDataURL('image/png')` でPNG化し、`pdf-lib` で **A4サイズ・2ページ（1ページ目テスト／2ページ目解答）のPDF** に画像として埋め込む。
+- 既存の `Tategaki.showAnswer` オプション（実装済み・解答は朱色）を使い、`renderPageToCanvas(columns, showAnswer, font, ...)` でテスト用（`showAnswer:false`）・解答表示用（`showAnswer:true`）のいずれのCanvasも生成できる共通関数として設計する。
+- 生成したCanvasは `toDataURL('image/png')` でPNG化し、`pdf-lib` で **A4サイズ・1ページ（テスト用紙のみ）のPDF** に画像として埋め込む。
   - 理由: 縦書き描画ロジック（Tategaki）をそのまま再利用でき、pdf-lib自体のテキスト描画APIで縦書きを再実装するコストを避けられるため。vision.mdの「既存のpdf-libを活用する」は、テキスト描画APIではなく画像埋め込みAPIとしての活用と解釈した。
   - トレードオフ: PDF内のテキストは選択・検索不可（画像化のため）。印刷用途のみなら問題ない。
+- **【変更】紙を節約するため、解答ページはPDFに含めない（印刷しない）**。答え合わせは画面上の「5. テスト履歴の閲覧機能」で行う。当初は2ページ（テスト／解答）構成だったが、vision.mdの方針変更（2026年時点）を受けて1ページ構成に変更した。
 - 生成したPDFは `Blob` として `window.open()` で新しいタブに開く。ブラウザ標準のPDFビューアの印刷ボタンで印刷する。
   - 「ワンクリックで印刷」は、ブラウザの技術的制約（JSから直接プリンタダイアログを開くことは可能だが、印刷対象の選択などはブラウザ/OS側のネイティブUIに委ねられる）を踏まえ、「生成ボタン1回でPDFが開き、即印刷できる状態になる」という解釈で実装する。
-
-- 印刷対象を朱色解答と見分けるための丸数字などの採番はPDF上に追加しない。テストページと解答ページは同一レイアウト・同一位置に配置されるため、空欄の位置だけで解答と対応が取れる（余計な複雑さを避けた）。
+- **印刷物と画面上の解答表示との紐付け方法**: 新しい識別子（IDフィールド等）は追加せず、既存の `TestHistoryEntry.date`（ISO日時、テスト生成＝記録時に決まる一意な値）をそのまま識別子として再利用する。
+  - `testHistoryStore.formatTestLabel(dateIso)` で `YYYY/MM/DD HH:mm`（分単位）の表示用ラベルに変換し、これを **PDFページ右下に薄いグレーの小さな文字で印字**（`pdfExport.stampLabel`）。同じラベルを履歴確認タブの一覧表示にも使うことで、印刷物と画面表示の対応付けが一目でできるようにした。
+  - `recordTest()` は記録した `TestHistoryEntry` を返すよう変更し（元は `void`）、生成直後の `entry.date` からラベルを作ってPDFに渡せるようにした。
+  - 秒単位まで一意にする必要はない（同じ分に2回テストを生成する運用は想定しない）ため、分単位の表示で十分と判断した。
 
 ### ファイル
-- `src/pdfExport.ts`: Canvas → PNG → PDF（`pdf-lib`）変換。レイアウト描画部分（`renderPageToCanvas`）は画面プレビュー（`app.html`のテスト生成タブ）とPDF出力（300dpi相当）の両方から共通で呼び出す設計にし、プレビューと実際の印刷結果がズレないようにした。
+- `src/pdfExport.ts`: Canvas → PNG → PDF（`pdf-lib`）変換。レイアウト描画部分（`renderPageToCanvas`）は画面プレビュー（`app.html`のテスト生成タブ・履歴確認タブ）とPDF出力（300dpi相当）の3箇所から共通で呼び出す設計にし、プレビュー・履歴表示・実際の印刷結果がズレないようにした。`generateTestPdf(columns, font, label)` は1ページのみ生成し、`label` をページ右下に印字する。
+
+---
+
+## 5. テスト履歴の閲覧機能
+
+### 決定事項
+- 過去のテストのレイアウト（列構成）自体は保存しない。`TestHistoryEntry.questionIds`（フラットなID配列、列に割り当てる前の選出順）のみを保存し、閲覧時に `getQuestion(id)` で問題データを引き直してから **`assignColumns()` を再実行して列レイアウトを再構築**する。
+  - これが可能な理由: `assignColumns` は問題の `text`（＝測定される高さ）に基づき降順ソートしてペアリングする決定的なロジックであり、入力配列の順序に依存しない（`kanji-app-plan.md` 3節参照）。そのため、元のテスト生成時と履歴閲覧時で `settings.slotsPerColumn` が変わっていない限り、同じ列構成が再現される。
+  - メリット: レイアウト情報の二重管理を避けられる（保存データは常に「どの問題が出たか」のみで済む）。
+- 問題が削除されている場合（`getQuestion` が `null` を返す場合）は、その問題をスキップして残りの問題だけでレイアウトを再構築し、警告文（`${n}問は削除済みのため表示できません`）を表示する。全問削除済みの場合は「表示できません」というメッセージのみ表示する。
+- 履歴一覧は新しい順（`loadHistory()` の逆順）に表示し、各行に `formatTestLabel(entry.date)` と問題数を表示する。選択すると右側のプレビューに `showAnswer:true`（朱色）で表示する — これが画面上の答え合わせに使う唯一のビューになる。
+
+### ファイル
+- `app.html`: 新規タブ「履歴確認」（`#tab-history`）。履歴一覧（`#h-list`）とプレビュー（`#h-preview`、`renderPageToCanvas(..., true, ...)` を使用）で構成。
 
 ---
 
@@ -154,3 +171,8 @@ interface TestHistoryEntry {
 - [x] `tsconfig.browser.json` 更新
 - [x] `npm run build:browser` 確認
 - [x] ブラウザ動作確認(Playwrightで実ブラウザ操作を検証。問題CRUD・キーボード操作・漢字範囲登録・テスト生成・PDF出力(2ページ・`%PDF`ヘッダ確認)まで動作確認済み)
+- [x] 印刷はテスト用紙(1ページ)のみに変更・生成日時ラベルの印字(`stampLabel`)
+- [x] `src/testHistoryStore.ts`: `recordTest`がエントリを返すよう変更・`formatTestLabel`追加
+- [x] 履歴確認タブ(`app.html`): 履歴一覧・解答(朱色)プレビューの実装
+- [x] `npm run build:browser`・`npm run dev` 再確認(コンパイルエラーなし)
+- [x] ブラウザ動作確認(Playwright): PDFが1ページのみになったこと・ラベル印字・履歴一覧表示・履歴からの解答表示(赤字)まで確認済み

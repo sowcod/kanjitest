@@ -88,19 +88,40 @@ async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<ArrayBuffer>
 }
 
 /**
- * A4・2ページ（1ページ目: テスト用（空欄）, 2ページ目: 解答用（朱色）)のPDFを生成する。
+ * ページ右下に生成日時ラベルを小さく印字する（横書き）。
+ * 紙の解答は印刷しない運用のため、あとで画面上の履歴（同じラベル表示）と
+ * 対応付けるための識別子として使う（vision.md「5. テスト履歴の閲覧機能」）。
  */
-export async function generateTestPdf(columns: Question[][], font: string): Promise<Uint8Array> {
+function stampLabel(canvas: HTMLCanvasElement, label: string): void {
+  const ctx = canvas.getContext('2d')!;
+  const scale = canvas.width / A4_WIDTH_PT;
+  const fontSize = Math.round(11 * scale);
+  const margin = Math.round(16 * scale);
+  ctx.save();
+  ctx.font = `${fontSize}px sans-serif`;
+  ctx.fillStyle = '#888888';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(label, canvas.width - margin, canvas.height - margin);
+  ctx.restore();
+}
+
+/**
+ * A4・1ページ（テスト用・空欄）のPDFを生成する。
+ *
+ * 紙の節約のため解答ページは印刷しない（答え合わせは画面上の履歴機能で行う）。
+ * `label` はページ右下に印字する生成日時ラベル（`testHistoryStore.formatTestLabel`）で、
+ * 印刷した用紙とあとで画面表示する解答を対応付けるための手がかりにする。
+ */
+export async function generateTestPdf(columns: Question[][], font: string, label: string): Promise<Uint8Array> {
   const testCanvas = renderPageToCanvas(columns, false, font);
-  const answerCanvas = renderPageToCanvas(columns, true, font);
+  stampLabel(testCanvas, label);
 
   const pdfDoc = await PDFDocument.create();
-  for (const canvas of [testCanvas, answerCanvas]) {
-    const pngBytes = await canvasToPngBytes(canvas);
-    const image = await pdfDoc.embedPng(pngBytes);
-    const page = pdfDoc.addPage([A4_WIDTH_PT, A4_HEIGHT_PT]);
-    page.drawImage(image, { x: 0, y: 0, width: A4_WIDTH_PT, height: A4_HEIGHT_PT });
-  }
+  const pngBytes = await canvasToPngBytes(testCanvas);
+  const image = await pdfDoc.embedPng(pngBytes);
+  const page = pdfDoc.addPage([A4_WIDTH_PT, A4_HEIGHT_PT]);
+  page.drawImage(image, { x: 0, y: 0, width: A4_WIDTH_PT, height: A4_HEIGHT_PT });
   return pdfDoc.save();
 }
 

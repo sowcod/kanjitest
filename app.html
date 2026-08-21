@@ -323,6 +323,86 @@
     font-size: 13px;
     padding: 32px;
   }
+
+  /* ── 履歴確認タブ ── */
+  #tab-history { }
+  .h-list-pane {
+    flex: 0 0 280px;
+    border-right: 1px solid #d1d5db;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .h-list-header {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 12px;
+    color: #6b7280;
+  }
+  #h-list {
+    flex: 1 1 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+  #h-list li {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f3f4f6;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  #h-list li .h-count {
+    display: block;
+    font-size: 11px;
+    color: #6b7280;
+  }
+  #h-list li:hover { background: #f9fafb; }
+  #h-list li.selected { background: #dbeafe; }
+  #h-list .h-empty {
+    padding: 16px 12px;
+    color: #9ca3af;
+    font-size: 12px;
+    cursor: default;
+  }
+  .h-preview-pane {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 12px;
+    gap: 8px;
+  }
+  #h-warnings {
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 4px;
+    padding: 6px 8px;
+    display: none;
+    white-space: pre-wrap;
+  }
+  #h-preview-wrap {
+    flex: 1 1 0;
+    overflow: auto;
+    background: #e5e7eb;
+    border-radius: 4px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 16px;
+  }
+  #h-preview {
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  }
+  #h-empty {
+    color: #9ca3af;
+    font-size: 13px;
+    padding: 32px;
+  }
 </style>
 </head>
 <body>
@@ -331,6 +411,7 @@
   <button data-tab="questions" class="active">問題管理</button>
   <button data-tab="kanji">漢字範囲管理</button>
   <button data-tab="test">テスト生成・印刷</button>
+  <button data-tab="history">履歴確認</button>
 </div>
 
 <div id="tab-content">
@@ -402,12 +483,27 @@
     </div>
   </div>
 
+  <!-- ── 履歴確認 ── -->
+  <div id="tab-history" class="tab-panel">
+    <div class="h-list-pane">
+      <div class="h-list-header">テスト履歴(<span id="h-count">0</span>件)</div>
+      <ul id="h-list"></ul>
+    </div>
+    <div class="h-preview-pane">
+      <div id="h-warnings"></div>
+      <div id="h-empty">左の一覧からテストを選ぶと、解答（赤字）がここに表示されます。</div>
+      <div id="h-preview-wrap" style="display:none">
+        <canvas id="h-preview"></canvas>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script type="module">
   import { Tategaki } from './dist/browser/tategaki.js';
   import {
-    listQuestions, saveQuestion, deleteQuestion, plainText,
+    listQuestions, saveQuestion, deleteQuestion, plainText, getQuestion,
   } from './dist/browser/questionStore.js';
   import { GRADE_KANJI } from './dist/browser/kanjiData.js';
   import {
@@ -415,7 +511,7 @@
     advanceGrade, setCurrentGrade, computeLearnedKanjiSet,
   } from './dist/browser/learnedKanjiStore.js';
   import { loadSettings, saveSettings } from './dist/browser/settingsStore.js';
-  import { recordTest, countRecentUses } from './dist/browser/testHistoryStore.js';
+  import { recordTest, countRecentUses, loadHistory, formatTestLabel } from './dist/browser/testHistoryStore.js';
   import { selectQuestions, assignColumns } from './dist/browser/testGenerator.js';
   import { renderPageToCanvas, generateTestPdf, openPdfInNewTab } from './dist/browser/pdfExport.js';
 
@@ -430,6 +526,7 @@
     questions: document.getElementById('tab-questions'),
     kanji: document.getElementById('tab-kanji'),
     test: document.getElementById('tab-test'),
+    history: document.getElementById('tab-history'),
   };
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -439,6 +536,7 @@
       tabPanels[btn.dataset.tab].classList.add('active');
       if (btn.dataset.tab === 'kanji') renderKanjiTab();
       if (btn.dataset.tab === 'test') renderTestControls();
+      if (btn.dataset.tab === 'history') renderHistoryList();
     });
   });
 
@@ -767,10 +865,11 @@
     tPdfBtn.disabled = true;
     tPdfBtn.textContent = '生成中…';
     try {
-      const bytes = await generateTestPdf(currentColumns, FONT_NAME);
-      openPdfInNewTab(bytes);
       const ids = currentColumns.flat().map(q => q.id);
-      recordTest(ids);
+      const entry = recordTest(ids);
+      const label = formatTestLabel(entry.date);
+      const bytes = await generateTestPdf(currentColumns, FONT_NAME, label);
+      openPdfInNewTab(bytes);
     } catch (e) {
       alert('PDFの生成に失敗しました: ' + e);
     } finally {
@@ -784,6 +883,102 @@
   new ResizeObserver(() => { if (currentColumns) drawTestPreview(currentColumns); }).observe(tPreview.parentElement);
 
   renderTestControls();
+
+  // ─────────────────────────────────────────────
+  // 履歴確認タブ
+  // ─────────────────────────────────────────────
+  const hList = document.getElementById('h-list');
+  const hCount = document.getElementById('h-count');
+  const hWarnings = document.getElementById('h-warnings');
+  const hEmpty = document.getElementById('h-empty');
+  const hPreviewWrap = document.getElementById('h-preview-wrap');
+  const hPreview = document.getElementById('h-preview');
+  const hPreviewCtx = hPreview.getContext('2d');
+
+  let selectedHistoryEntry = null;
+
+  function renderHistoryList() {
+    const history = [...loadHistory()].reverse(); // 新しい順
+    hCount.textContent = String(history.length);
+    hList.innerHTML = '';
+    if (history.length === 0) {
+      const empty = document.createElement('li');
+      empty.className = 'h-empty';
+      empty.textContent = 'まだテストを生成していません。';
+      hList.appendChild(empty);
+      return;
+    }
+    history.forEach(entry => {
+      const li = document.createElement('li');
+      const label = document.createElement('span');
+      label.textContent = formatTestLabel(entry.date);
+      const count = document.createElement('span');
+      count.className = 'h-count';
+      count.textContent = `${entry.questionIds.length}問`;
+      li.appendChild(label);
+      li.appendChild(count);
+      li.addEventListener('click', () => {
+        [...hList.children].forEach(c => c.classList.remove('selected'));
+        li.classList.add('selected');
+        selectedHistoryEntry = entry;
+        drawHistoryDetail(entry);
+      });
+      hList.appendChild(li);
+    });
+  }
+
+  function showHistoryWarnings(warnings) {
+    if (warnings.length === 0) {
+      hWarnings.style.display = 'none';
+      return;
+    }
+    hWarnings.textContent = warnings.join('\n');
+    hWarnings.style.display = 'block';
+  }
+
+  function drawHistoryDetail(entry) {
+    const found = [];
+    let missingCount = 0;
+    for (const id of entry.questionIds) {
+      const q = getQuestion(id);
+      if (q) found.push(q);
+      else missingCount++;
+    }
+    const warnings = missingCount > 0
+      ? [`${missingCount}問は削除済みのため表示できません。`]
+      : [];
+    showHistoryWarnings(warnings);
+
+    if (found.length === 0) {
+      hEmpty.textContent = 'この回の問題はすべて削除されているため表示できません。';
+      hEmpty.style.display = 'block';
+      hPreviewWrap.style.display = 'none';
+      return;
+    }
+
+    const settings = loadSettings();
+    const measureCanvas = document.createElement('canvas');
+    const measureCtx = measureCanvas.getContext('2d');
+    const measureTategaki = new Tategaki(measureCtx, { font: `32px "${FONT_NAME}"`, lineHeight: 1.0 });
+    const measureHeight = text => measureTategaki.measureText(text).height;
+    const { columns } = assignColumns(found, measureHeight, settings.slotsPerColumn);
+
+    hEmpty.style.display = 'none';
+    hPreviewWrap.style.display = 'flex';
+
+    const A4_RATIO = 841.89 / 595.28;
+    const cssWidth = Math.min(560, Math.max(hPreviewWrap.clientWidth - 32, 300));
+    const cssHeight = cssWidth * A4_RATIO;
+    hPreview.style.width = cssWidth + 'px';
+    hPreview.style.height = cssHeight + 'px';
+
+    const rendered = renderPageToCanvas(columns, true, FONT_NAME, cssWidth * DPR, cssHeight * DPR);
+    hPreview.width = rendered.width;
+    hPreview.height = rendered.height;
+    hPreviewCtx.drawImage(rendered, 0, 0);
+  }
+
+  new ResizeObserver(() => { if (selectedHistoryEntry) drawHistoryDetail(selectedHistoryEntry); }).observe(hPreviewWrap);
 </script>
 </body>
 </html>

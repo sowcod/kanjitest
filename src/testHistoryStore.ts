@@ -19,11 +19,24 @@ export function loadHistory(): TestHistoryEntry[] {
   }
 }
 
-export function recordTest(questionIds: string[]): void {
+/** テストを1件記録し、記録したエントリを返す(印刷物へのラベル印字に使うため) */
+export function recordTest(questionIds: string[]): TestHistoryEntry {
   const history = loadHistory();
-  history.push({ date: new Date().toISOString(), questionIds });
+  const entry: TestHistoryEntry = { date: new Date().toISOString(), questionIds };
+  history.push(entry);
   const trimmed = history.slice(-MAX_HISTORY_LENGTH);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+  return entry;
+}
+
+/**
+ * 印刷物への印字・履歴一覧表示の両方で使う表示ラベル（分単位）。
+ * 印刷したテスト用紙とあとで画面上に表示する解答を対応付けるための識別子として使う。
+ */
+export function formatTestLabel(dateIso: string): string {
+  const d = new Date(dateIso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /**
