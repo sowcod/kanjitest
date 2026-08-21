@@ -152,12 +152,19 @@
   .q-edit-pane {
     flex: 1 1 0;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     min-width: 0;
     padding: 12px;
+    gap: 12px;
+  }
+  .q-edit-form {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
     gap: 8px;
   }
-  .q-edit-pane label {
+  .q-edit-form label {
     font-size: 11px;
     color: #6b7280;
   }
@@ -197,7 +204,7 @@
   }
 
   .q-preview-wrap {
-    flex: 1 1 0;
+    flex: 0 0 240px;
     overflow: auto;
     background: #e5e7eb;
     border-radius: 4px;
@@ -459,16 +466,18 @@
       <ul id="q-list" tabindex="0"></ul>
     </div>
     <div class="q-edit-pane">
-      <label for="q-editor">記法テキスト(1問=1行。Cmd/Ctrl+Enterで保存)</label>
-      <textarea id="q-editor" spellcheck="false" placeholder="例: 明日[あした]は &lt;遠&gt;[えん]足[そく]です。"></textarea>
-      <div class="q-form-row">
-        <label><input type="radio" name="q-weight" value="1" checked> 通常(1問分)</label>
-        <label><input type="radio" name="q-weight" value="2"> 長め(2問分・1列を単独で使う)</label>
-        <span class="spacer"></span>
-        <button class="btn btn-primary" id="q-save-btn">保存 (⌘/Ctrl+Enter)</button>
-        <button class="btn btn-danger" id="q-delete-btn" disabled>削除 (⌘/Ctrl+⌫)</button>
+      <div class="q-edit-form">
+        <label for="q-editor">記法テキスト(1問=1行。Cmd/Ctrl+Enterで保存)</label>
+        <textarea id="q-editor" spellcheck="false" placeholder="例: 明日[あした]は &lt;遠&gt;[えん]足[そく]です。"></textarea>
+        <div class="q-form-row">
+          <label><input type="radio" name="q-weight" value="1" checked> 通常(1問分)</label>
+          <label><input type="radio" name="q-weight" value="2"> 長め(2問分・1列を単独で使う)</label>
+          <span class="spacer"></span>
+          <button class="btn btn-primary" id="q-save-btn">保存 (⌘/Ctrl+Enter)</button>
+          <button class="btn btn-danger" id="q-delete-btn" disabled>削除 (⌘/Ctrl+⌫)</button>
+        </div>
+        <div id="q-error-bar"></div>
       </div>
-      <div id="q-error-bar"></div>
       <div class="q-preview-wrap">
         <canvas id="q-preview"></canvas>
       </div>
@@ -678,21 +687,46 @@
     const text = qEditor.value.trim();
     qErrorBar.style.display = 'none';
 
-    const cssWidth = Math.max(qPreview.parentElement.clientWidth - 32, 200);
-    const cssHeight = 260;
+    // 縦書きは1問=1列なので、幅はサイドバー幅で足りるが、高さは問題文の長さに応じて伸びる。
+    // measureText には ctx.font が必要 → canvas の width/height を書き換えるとcontext状態が
+    // リセットされるため、リサイズ前に測定し、リサイズ後に Tategaki を作り直す。
+    const fontSize = 17 * DPR;
+    const marginV = 20 * DPR;
+    const wrapWidth = qPreview.parentElement.clientWidth - 24;
+    const wrapHeight = qPreview.parentElement.clientHeight - 24;
+
+    let textWidth = 0;
+    let textHeight = 0;
+    let measureError = null;
+    if (text) {
+      try {
+        const measured = new Tategaki(qPreviewCtx, { font: `${fontSize}px "${FONT_NAME}"`, lineHeight: 1.0 }).measureText(text);
+        textWidth = measured.width;
+        textHeight = measured.height;
+      } catch (e) {
+        measureError = e;
+      }
+    }
+
+    const cssWidth = Math.max(wrapWidth, Math.ceil(textWidth / DPR) + 40, 150);
+    const cssHeight = Math.max(wrapHeight, Math.ceil(textHeight / DPR) + Math.ceil((marginV * 2) / DPR), 200);
     qPreview.style.width = cssWidth + 'px';
     qPreview.style.height = cssHeight + 'px';
     qPreview.width = cssWidth * DPR;
     qPreview.height = cssHeight * DPR;
 
+    const tategaki = new Tategaki(qPreviewCtx, { font: `${fontSize}px "${FONT_NAME}"`, lineHeight: 1.0 });
     qPreviewCtx.fillStyle = '#ffffff';
     qPreviewCtx.fillRect(0, 0, qPreview.width, qPreview.height);
     if (!text) return;
 
+    if (measureError) {
+      qErrorBar.textContent = String(measureError);
+      qErrorBar.style.display = 'block';
+      return;
+    }
+
     try {
-      const fontSize = 17 * DPR;
-      const tategaki = new Tategaki(qPreviewCtx, { font: `${fontSize}px "${FONT_NAME}"`, lineHeight: 1.0 });
-      const marginV = 20 * DPR;
       const startX = Math.round(qPreview.width / 2 + tategaki.measureText(text).width / 2);
       tategaki.fillText(text, startX, marginV);
     } catch (e) {
