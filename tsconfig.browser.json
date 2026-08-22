@@ -21,7 +21,9 @@
     "src/settingsStore.ts",
     "src/testHistoryStore.ts",
     "src/testGenerator.ts",
-    "src/pdfExport.ts"
+    "src/pdfExport.ts",
+    "src/kanjiReadings.ts",
+    "src/furigana.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

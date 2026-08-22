@@ -192,6 +192,15 @@
   }
   .q-form-row .spacer { flex: 1 1 auto; }
 
+  .q-furigana-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .q-furigana-toolbar .btn { padding: 4px 8px; font-size: 12px; }
+  .q-furigana-status { font-size: 11px; color: #9ca3af; }
+
   #q-error-bar {
     display: none;
     font-size: 12px;
@@ -468,6 +477,13 @@
     <div class="q-edit-pane">
       <div class="q-edit-form">
         <label for="q-editor">記法テキスト(1問=1行。Cmd/Ctrl+Enterで保存)</label>
+        <div class="q-furigana-toolbar" id="q-furigana-toolbar">
+          <button class="btn" id="q-furi-ruby" disabled>ふりがな</button>
+          <button class="btn" id="q-furi-read" disabled>読みを問題に</button>
+          <button class="btn" id="q-furi-write" disabled>漢字を問題に</button>
+          <button class="btn" id="q-furi-bracket" disabled>漢字+送り仮名</button>
+          <span class="q-furigana-status" id="q-furigana-status">読み込み中…</span>
+        </div>
         <textarea id="q-editor" spellcheck="false" placeholder="例: 明日[あした]は &lt;遠&gt;[えん]足[そく]です。"></textarea>
         <div class="q-form-row">
           <label><input type="radio" name="q-weight" value="1" checked> 通常(1問分)</label>
@@ -553,6 +569,7 @@
 
 </div>
 
+<script src="./dist/browser/kuromoji.js"></script>
 <script type="module">
   import { Tategaki } from './dist/browser/tategaki.js';
   import {
@@ -569,6 +586,7 @@
   } from './dist/browser/testHistoryStore.js';
   import { selectQuestions, assignColumns } from './dist/browser/testGenerator.js';
   import { renderPageToCanvas, generateTestPdf, openPdfInNewTab } from './dist/browser/pdfExport.js';
+  import { initFurigana, buildRuby, buildReadBox, buildWriteBox, buildBracketBox } from './dist/browser/furigana.js';
 
   const DPR = 2;
   const FONT_NAME = '游教科書体';
@@ -767,8 +785,86 @@
     } else if (e.key === 'Escape') {
       e.preventDefault();
       startNew();
+    } else if (e.ctrlKey && e.shiftKey && e.code === 'KeyU') {
+      e.preventDefault();
+      applyFurigana(buildRuby);
+    } else if (e.ctrlKey && e.shiftKey && e.code === 'KeyI') {
+      e.preventDefault();
+      applyFurigana(buildReadBox);
+    } else if (e.ctrlKey && e.shiftKey && e.code === 'KeyO') {
+      e.preventDefault();
+      applyFurigana(buildWriteBox);
+    } else if (e.ctrlKey && e.shiftKey && e.code === 'KeyP') {
+      e.preventDefault();
+      applyFurigana(buildBracketBox);
     }
   });
+
+  // ─────────────────────────────────────────────
+  // ふりがな入力補助ツールバー(kuromoji + 教育漢字読みデータでオフライン変換)
+  // ─────────────────────────────────────────────
+  const qFuriganaButtons = [
+    document.getElementById('q-furi-ruby'),
+    document.getElementById('q-furi-read'),
+    document.getElementById('q-furi-write'),
+    document.getElementById('q-furi-bracket'),
+  ];
+  const qFuriganaStatus = document.getElementById('q-furigana-status');
+  let furiganaReady = false;
+
+  // Cmd+Shift+数字はMacのスクリーンショット操作と衝突するため、ここではControlキーのみを使う。
+  // 表示上のキー名はOSごとに変える(Mac: ⌃⇧、その他: Ctrl+Shift)。
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
+  const FURIGANA_SHORTCUT_KEYS = ['U', 'I', 'O', 'P'];
+  qFuriganaButtons.forEach((btn, i) => {
+    const key = FURIGANA_SHORTCUT_KEYS[i];
+    const hint = isMac ? `⌃⇧${key}` : `Ctrl+Shift+${key}`;
+    btn.textContent = `${btn.textContent} (${hint})`;
+  });
+
+  function updateFuriganaToolbarState() {
+    const hasSelection = qEditor.selectionStart !== qEditor.selectionEnd;
+    qFuriganaButtons.forEach(btn => { btn.disabled = !furiganaReady || !hasSelection; });
+  }
+
+  initFurigana().then(() => {
+    furiganaReady = true;
+    qFuriganaStatus.textContent = '';
+    updateFuriganaToolbarState();
+  }).catch(err => {
+    qFuriganaStatus.textContent = '読み込み失敗: ' + err;
+  });
+
+  ['select', 'mouseup', 'keyup', 'input'].forEach(evt => qEditor.addEventListener(evt, updateFuriganaToolbarState));
+
+  async function applyFurigana(buildFn) {
+    if (!furiganaReady) return;
+    const start = qEditor.selectionStart;
+    const end = qEditor.selectionEnd;
+    if (start === end) return;
+    const before = qEditor.value.slice(0, start);
+    const selected = qEditor.value.slice(start, end);
+    const after = qEditor.value.slice(end);
+    let result;
+    try {
+      result = await buildFn(selected);
+    } catch (err) {
+      qErrorBar.textContent = String(err);
+      qErrorBar.style.display = 'block';
+      return;
+    }
+    qEditor.value = before + result.replacement + after;
+    const caret = start + (result.caretOffset ?? result.replacement.length);
+    qEditor.focus();
+    qEditor.setSelectionRange(caret, caret);
+    drawQuestionPreview();
+    updateFuriganaToolbarState();
+  }
+
+  qFuriganaButtons[0].addEventListener('click', () => applyFurigana(buildRuby));
+  qFuriganaButtons[1].addEventListener('click', () => applyFurigana(buildReadBox));
+  qFuriganaButtons[2].addEventListener('click', () => applyFurigana(buildWriteBox));
+  qFuriganaButtons[3].addEventListener('click', () => applyFurigana(buildBracketBox));
 
   qList.addEventListener('keydown', e => {
     if (questions.length === 0) return;
