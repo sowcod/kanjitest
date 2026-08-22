@@ -165,7 +165,11 @@ export class Tategaki {
     let ry = groupCenterY - totalRubyHeight / 2 + rubyStep / 2;
 
     for (const rch of rubyChars) {
-      ctx.fillText(rch, rubyCx, ry);
+      if (SMALL_CHARS.has(rch)) {
+        ctx.fillText(rch, rubyCx + rubySize * 0.1, ry - rubySize * 0.1);
+      } else {
+        ctx.fillText(rch, rubyCx, ry);
+      }
       ry += rubyStep;
     }
     ctx.restore();
