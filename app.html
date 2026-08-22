@@ -876,9 +876,7 @@
     const start = qEditor.selectionStart;
     const end = qEditor.selectionEnd;
     if (start === end) return;
-    const before = qEditor.value.slice(0, start);
     const selected = qEditor.value.slice(start, end);
-    const after = qEditor.value.slice(end);
     let result;
     try {
       result = await buildFn(selected);
@@ -887,11 +885,19 @@
       qErrorBar.style.display = 'block';
       return;
     }
-    qEditor.value = before + result.replacement + after;
-    const caret = start + (result.caretOffset ?? result.replacement.length);
     qEditor.focus();
+    qEditor.setSelectionRange(start, end);
+    // execCommand('insertText')でネイティブのアンドゥ履歴に載せる。
+    // qEditor.value を直接書き換えるとブラウザの元に戻す/やり直すが効かなくなるため。
+    const inserted = document.execCommand('insertText', false, result.replacement);
+    if (!inserted) {
+      const before = qEditor.value.slice(0, start);
+      const after = qEditor.value.slice(end);
+      qEditor.value = before + result.replacement + after;
+      drawQuestionPreview();
+    }
+    const caret = start + (result.caretOffset ?? result.replacement.length);
     qEditor.setSelectionRange(caret, caret);
-    drawQuestionPreview();
     updateFuriganaToolbarState();
   }
 
