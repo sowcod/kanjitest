@@ -477,7 +477,7 @@
     </div>
     <div class="q-edit-pane">
       <div class="q-edit-form">
-        <label for="q-editor">記法テキスト(1問=1行。Cmd/Ctrl+Enterで保存)</label>
+        <label for="q-editor">記法テキスト(1問=1行)</label>
         <div class="q-furigana-toolbar" id="q-furigana-toolbar">
           <button class="btn" id="q-furi-ruby" disabled title="選択範囲の漢字にふりがなを振る">
             <svg class="ficon" viewBox="0 0 20 20" aria-hidden="true">
@@ -518,8 +518,8 @@
           <label><input type="radio" name="q-weight" value="1" checked> 通常(1問分)</label>
           <label><input type="radio" name="q-weight" value="2"> 長め(2問分・1列を単独で使う)</label>
           <span class="spacer"></span>
-          <button class="btn btn-primary" id="q-save-btn">保存 (⌘/Ctrl+Enter)</button>
-          <button class="btn btn-danger" id="q-delete-btn" disabled>削除 (⌘/Ctrl+⌫)</button>
+          <button class="btn btn-primary" id="q-save-btn">保存</button>
+          <button class="btn btn-danger" id="q-delete-btn" disabled>削除</button>
         </div>
         <div id="q-error-bar"></div>
       </div>
@@ -619,6 +619,7 @@
 
   const DPR = 2;
   const FONT_NAME = '游教科書体';
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
   const KIND_LABELS = { write: '書', read: '読', okurigana: '送' };
   function questionKindLabel(text) {
     return questionKinds(text).map(k => KIND_LABELS[k]).join('+');
@@ -658,6 +659,10 @@
   const qErrorBar = document.getElementById('q-error-bar');
   const qPreview = document.getElementById('q-preview');
   const qPreviewCtx = qPreview.getContext('2d');
+
+  // ショートカットキーの表示はOSごとに変える(Mac: ⌘、その他: Ctrl)。
+  qSaveBtn.textContent = `保存 (${isMac ? '⌘Enter' : 'Ctrl+Enter'})`;
+  qDeleteBtn.textContent = `削除 (${isMac ? '⌘⌫' : 'Ctrl+⌫'})`;
 
   let questions = [];
   let editingId = null; // null = 新規作成モード
@@ -843,7 +848,6 @@
 
   // Cmd+Shift+数字はMacのスクリーンショット操作と衝突するため、ここではControlキーのみを使う。
   // 表示上のキー名はOSごとに変える(Mac: ⌃⇧、その他: Ctrl+Shift)。
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
   const FURIGANA_SHORTCUT_KEYS = ['U', 'I', 'O', 'P'];
   qFuriganaButtons.forEach((btn, i) => {
     const key = FURIGANA_SHORTCUT_KEYS[i];
