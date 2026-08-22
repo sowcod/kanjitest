@@ -74,15 +74,19 @@ export function renderPageToCanvas(
   ctx.restore();
   const startY = margin + numberGap + numberAscent;
 
-  // 列内容の実際のインク幅（ルビ・書き取り枠などを含む）を踏まえて、右端・左端の列の
-  // 中心Xを決める。これにより内容によらず左右とも margin ぴったりの余白に収まる。
-  // 中間列はその2点を等間隔で結ぶ（既存の等間隔レイアウトを維持）。
+  // 列内容の実際のインク幅（ルビ・書き取り枠などを含む）を踏まえて、右端の列の中心Xを決める。
+  // これにより内容によらず右端は margin ぴったりの余白に収まる。
   const usedColumns = Math.min(columns.length, NUM_COLUMNS);
   const maxBodyOffset = (group: Question[], side: 'bodyLeft' | 'bodyRight'): number =>
     group.reduce((m, q) => Math.max(m, tategaki.measureText(q.text)[side]), 0);
   const cxRight = pageWidthPx - margin - maxBodyOffset(columns[0] ?? [], 'bodyRight');
-  const cxLeft = margin + maxBodyOffset(columns[usedColumns - 1] ?? [], 'bodyLeft');
-  const columnStep = usedColumns > 1 ? (cxRight - cxLeft) / (usedColumns - 1) : 0;
+  // 列の間隔(ピッチ)は実際に使う列数に関わらず、常にNUM_COLUMNS列分割の間隔で固定する。
+  // これにより問題数が少ないときも均等割りで間延びさせず、いつもと同じ間隔で右詰めに配置する。
+  const leftBodyOffset = columns
+    .slice(0, usedColumns)
+    .reduce((m, group) => Math.max(m, maxBodyOffset(group, 'bodyLeft')), 0);
+  const cxLeft = margin + leftBodyOffset;
+  const columnStep = (cxRight - cxLeft) / (NUM_COLUMNS - 1);
 
   // 列は右端(i=0)から左へ、列内は上から下へ描画される。これは縦書きの自然な読み順
   // （右→左、上→下）と一致するため、この描画順のまま①②③…と採番する。
