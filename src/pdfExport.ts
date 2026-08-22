@@ -49,10 +49,13 @@ export function renderPageToCanvas(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const marginH = Math.round(50 * scale);
-  const marginV = Math.round(60 * scale);
+  // 印刷時、上下左右いずれも1cm相当の余白を確保する。
+  const CM_TO_PT = 72 / 2.54;
+  const margin = Math.round(CM_TO_PT * scale);
   const fontSize = Math.round(17 * scale);
   const rowGap = fontSize * 1.5;
+  // これを超える問題は用紙の物理的な余白・印刷不可領域にはみ出してしまうため描画しない。
+  const maxY = pageHeightPx - margin;
 
   const tategaki = new Tategaki(ctx, {
     font: `${fontSize}px "${font}"`,
@@ -60,22 +63,40 @@ export function renderPageToCanvas(
     showAnswer,
   });
 
-  const usableWidth = pageWidthPx - marginH * 2;
-  const columnStep = usableWidth / (NUM_COLUMNS - 1);
   const numberFontSize = Math.round(fontSize * 0.55);
   const numberGap = Math.round(4 * scale);
+
+  // 丸数字は本文の上に(textBaseline: bottom で)重ねて描くため、その実際の高さ(ascent)
+  // ぶん本文の開始Yを下げないと、数字が上端の余白に食い込んでしまう。
+  ctx.save();
+  ctx.font = `${numberFontSize}px sans-serif`;
+  const numberAscent = ctx.measureText('①').actualBoundingBoxAscent;
+  ctx.restore();
+  const startY = margin + numberGap + numberAscent;
+
+  // 列内容の実際のインク幅（ルビ・書き取り枠などを含む）を踏まえて、右端・左端の列の
+  // 中心Xを決める。これにより内容によらず左右とも margin ぴったりの余白に収まる。
+  // 中間列はその2点を等間隔で結ぶ（既存の等間隔レイアウトを維持）。
+  const usedColumns = Math.min(columns.length, NUM_COLUMNS);
+  const maxBodyOffset = (group: Question[], side: 'bodyLeft' | 'bodyRight'): number =>
+    group.reduce((m, q) => Math.max(m, tategaki.measureText(q.text)[side]), 0);
+  const cxRight = pageWidthPx - margin - maxBodyOffset(columns[0] ?? [], 'bodyRight');
+  const cxLeft = margin + maxBodyOffset(columns[usedColumns - 1] ?? [], 'bodyLeft');
+  const columnStep = usedColumns > 1 ? (cxRight - cxLeft) / (usedColumns - 1) : 0;
 
   // 列は右端(i=0)から左へ、列内は上から下へ描画される。これは縦書きの自然な読み順
   // （右→左、上→下）と一致するため、この描画順のまま①②③…と採番する。
   let qNumber = 1;
 
-  for (let i = 0; i < columns.length && i < NUM_COLUMNS; i++) {
-    const cx = pageWidthPx - marginH - i * columnStep;
-    let currentY = marginV;
+  for (let i = 0; i < usedColumns; i++) {
+    const cx = cxRight - i * columnStep;
+    let currentY = startY;
     const group = columns[i];
 
     for (let j = 0; j < group.length; j++) {
       const q = group[j];
+      const { height } = tategaki.measureText(q.text);
+      if (currentY + height > maxY) break;
 
       ctx.save();
       ctx.font = `${numberFontSize}px sans-serif`;
@@ -87,7 +108,6 @@ export function renderPageToCanvas(
       qNumber++;
 
       tategaki.fillText(q.text, cx, currentY);
-      const { height } = tategaki.measureText(q.text);
       currentY += height;
 
       if (j < group.length - 1) {
