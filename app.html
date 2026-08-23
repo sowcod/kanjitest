@@ -184,10 +184,6 @@
     border-radius: 3px;
     padding: 1px 4px;
   }
-  #q-list li .badge.kind-badge {
-    color: #4338ca;
-    background: #eef2ff;
-  }
   #q-list li .badge.grade-badge {
     color: #065f46;
     background: #d1fae5;
@@ -739,7 +735,7 @@
 <script type="module">
   import { Tategaki } from './dist/browser/tategaki.js';
   import {
-    listQuestions, saveQuestion, deleteQuestion, getQuestion, questionKinds, questionGrade,
+    listQuestions, saveQuestion, deleteQuestion, getQuestion, questionGrade,
     findDuplicate, plainText,
   } from './dist/browser/questionStore.js';
   import { parse } from './dist/browser/parser.js';
@@ -759,10 +755,6 @@
   const DPR = 2;
   const FONT_NAME = '游教科書体';
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent);
-  const KIND_LABELS = { write: '書', read: '読', okurigana: '送' };
-  function questionKindLabel(text) {
-    return questionKinds(text).map(k => KIND_LABELS[k]).join('+');
-  }
 
   const SEGMENT_KIND_LABELS = { writeBox: '書き取り', readBox: '読み取り', bracketBox: '送り仮名' };
 
@@ -857,13 +849,6 @@
       label.className = 'q-label';
       label.appendChild(buildQuestionLabel(q.text));
       li.appendChild(label);
-      const kindLabel = questionKindLabel(q.text);
-      if (kindLabel) {
-        const kindBadge = document.createElement('span');
-        kindBadge.className = 'badge kind-badge';
-        kindBadge.textContent = kindLabel;
-        li.appendChild(kindBadge);
-      }
       const grade = questionGrade(q.text);
       const gradeBadge = document.createElement('span');
       gradeBadge.className = 'badge grade-badge' + (grade ? '' : ' grade-unknown');
