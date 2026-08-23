@@ -1054,7 +1054,8 @@
     tPreview.style.width = cssWidth + 'px';
     tPreview.style.height = cssHeight + 'px';
 
-    const rendered = renderPageToCanvas(columns, false, FONT_NAME, cssWidth * DPR, cssHeight * DPR);
+    // 画面プレビューは作成者が内容を確認できるよう答えを表示する。印刷用PDFは答えを表示しない(generateTestPdf側)。
+    const rendered = renderPageToCanvas(columns, true, FONT_NAME, cssWidth * DPR, cssHeight * DPR);
     tPreview.width = rendered.width;
     tPreview.height = rendered.height;
     tPreviewCtx.drawImage(rendered, 0, 0);
