@@ -122,6 +122,20 @@
     height: 10px;
     border-radius: 2px;
   }
+  .q-search-wrap {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .q-search-wrap input {
+    width: 100%;
+    padding: 5px 8px;
+    font-size: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    outline: none;
+  }
+  .q-search-wrap input:focus { border-color: #3b82d4; }
   #q-list {
     flex: 1 1 0;
     overflow-y: auto;
@@ -372,6 +386,58 @@
     font-size: 13px;
     box-sizing: border-box;
   }
+  .t-select-pane {
+    flex: 0 0 280px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .t-select-header {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 12px;
+    color: #6b7280;
+  }
+  #t-select-list {
+    flex: 1 1 0;
+    overflow-y: auto;
+    list-style: none;
+    outline: none;
+  }
+  #t-select-list li {
+    padding: 6px 12px;
+    border-bottom: 1px solid #f3f4f6;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #t-select-list li .t-select-check {
+    flex: 0 0 14px;
+    color: #1d4ed8;
+    font-weight: 700;
+  }
+  #t-select-list li .q-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #t-select-list li:hover { background: #f9fafb; }
+  #t-select-list li.selected { background: #dbeafe; }
+  #t-select-list .q-empty {
+    padding: 16px 12px;
+    color: #9ca3af;
+    font-size: 12px;
+    cursor: default;
+  }
   .t-main {
     flex: 1 1 0;
     display: flex;
@@ -525,6 +591,9 @@
         <span>登録済み問題(<span id="q-count">0</span>件)</span>
         <button class="btn" id="q-new-btn">新規 (Esc)</button>
       </div>
+      <div class="q-search-wrap">
+        <input type="search" id="q-search" placeholder="文で検索(読み方ではなく読める文)">
+      </div>
       <div class="q-legend">
         <span class="q-legend-item"><span class="q-legend-swatch q-char-writeBox"></span>書き取り</span>
         <span class="q-legend-item"><span class="q-legend-swatch q-char-readBox"></span>読み取り</span>
@@ -624,13 +693,23 @@
       <label>直近何回分を重複判定に使うか:
         <input type="number" id="t-history-count" min="1" step="1">
       </label>
-      <button class="btn btn-primary" id="t-generate-btn">テストを生成</button>
+      <button class="btn btn-primary" id="t-generate-btn">ランダム生成</button>
+      <button class="btn" id="t-clear-btn">選択をクリア(白紙から作る)</button>
       <button class="btn" id="t-pdf-btn" disabled>PDFを開く(印刷用)</button>
+    </div>
+    <div class="t-select-pane">
+      <div class="t-select-header">
+        問題を選ぶ(<span id="t-select-count">0</span>/<span id="t-select-target">10</span>)
+      </div>
+      <div class="q-search-wrap">
+        <input type="search" id="t-select-search" placeholder="文で検索して追加/外す">
+      </div>
+      <ul id="t-select-list" tabindex="0"></ul>
     </div>
     <div class="t-main">
       <div id="t-warnings"></div>
       <div id="t-preview-wrap">
-        <div id="t-empty">「テストを生成」を押すとここにプレビューが表示されます。</div>
+        <div id="t-empty">「ランダム生成」を押すか、左の一覧から問題を選ぶとここにプレビューが表示されます。</div>
         <canvas id="t-preview" style="display:none"></canvas>
       </div>
     </div>
@@ -661,7 +740,7 @@
   import { Tategaki } from './dist/browser/tategaki.js';
   import {
     listQuestions, saveQuestion, deleteQuestion, getQuestion, questionKinds, questionGrade,
-    findDuplicate,
+    findDuplicate, plainText,
   } from './dist/browser/questionStore.js';
   import { parse } from './dist/browser/parser.js';
   import { GRADE_KANJI } from './dist/browser/kanjiData.js';
@@ -723,7 +802,7 @@
       btn.classList.add('active');
       tabPanels[btn.dataset.tab].classList.add('active');
       if (btn.dataset.tab === 'kanji') renderKanjiTab();
-      if (btn.dataset.tab === 'test') renderTestControls();
+      if (btn.dataset.tab === 'test') { renderTestControls(); renderSelectPane(); }
       if (btn.dataset.tab === 'history') renderHistoryList();
     });
   });
@@ -749,15 +828,25 @@
   let questions = [];
   let editingId = null; // null = 新規作成モード
   let selectedIndex = -1;
+  const qSearch = document.getElementById('q-search');
+  let qSearchQuery = '';
+
+  /** 記法ではなく読める文(plainText)を対象に検索する */
+  function matchesQuestionSearch(q, query) {
+    return plainText(q.text).toLowerCase().includes(query);
+  }
 
   function refreshQuestionList() {
-    questions = listQuestions();
-    qCount.textContent = String(questions.length);
+    const all = listQuestions();
+    questions = qSearchQuery ? all.filter(q => matchesQuestionSearch(q, qSearchQuery)) : all;
+    qCount.textContent = qSearchQuery ? `${questions.length}/${all.length}` : String(all.length);
     qList.innerHTML = '';
     if (questions.length === 0) {
       const empty = document.createElement('li');
       empty.className = 'q-empty';
-      empty.textContent = '問題がまだありません。右側で新規作成してください。';
+      empty.textContent = qSearchQuery
+        ? '検索条件に一致する問題がありません。'
+        : '問題がまだありません。右側で新規作成してください。';
       qList.appendChild(empty);
       return;
     }
@@ -1038,6 +1127,25 @@
   qNewBtn.addEventListener('click', startNew);
   document.querySelectorAll('input[name="q-weight"]').forEach(r => r.addEventListener('change', drawQuestionPreview));
 
+  qSearch.addEventListener('input', () => {
+    qSearchQuery = qSearch.value.trim().toLowerCase();
+    // 検索で絞り込んでも編集中の項目が結果に残っていれば選択状態を保つ
+    selectedIndex = -1;
+    refreshQuestionList();
+    if (editingId) selectedIndex = questions.findIndex(q => q.id === editingId);
+    highlightSelected();
+  });
+  qSearch.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      qSearch.value = '';
+      qSearchQuery = '';
+      refreshQuestionList();
+      if (editingId) selectedIndex = questions.findIndex(q => q.id === editingId);
+      highlightSelected();
+    }
+  });
+
   refreshQuestionList();
   drawQuestionPreview();
 
@@ -1111,13 +1219,21 @@
   const tOkuriganaRatio = document.getElementById('t-okurigana-ratio');
   const tHistoryCount = document.getElementById('t-history-count');
   const tGenerateBtn = document.getElementById('t-generate-btn');
+  const tClearBtn = document.getElementById('t-clear-btn');
   const tPdfBtn = document.getElementById('t-pdf-btn');
   const tWarnings = document.getElementById('t-warnings');
   const tPreview = document.getElementById('t-preview');
   const tEmpty = document.getElementById('t-empty');
   const tPreviewCtx = tPreview.getContext('2d');
+  const tSelectSearch = document.getElementById('t-select-search');
+  const tSelectList = document.getElementById('t-select-list');
+  const tSelectCount = document.getElementById('t-select-count');
+  const tSelectTarget = document.getElementById('t-select-target');
 
   let currentColumns = null;
+  // 選択中の問題(順序は選出時のまま保持。列割り付けはassignColumns側で高さバランスを取るため順序自体は結果に影響しない)
+  let manualSelectionIds = new Set();
+  let tSelectSearchQuery = '';
 
   function renderTestControls() {
     const settings = loadSettings();
@@ -1164,19 +1280,15 @@
     tPreviewCtx.drawImage(rendered, 0, 0);
   }
 
-  function generate() {
-    persistTestSettings();
-    const settings = loadSettings();
-    const learnedState = loadLearnedKanjiState();
-    const learnedSet = computeLearnedKanjiSet(learnedState);
-    const allQuestions = listQuestions();
-    const recentUses = countRecentUses(settings.recentHistoryCount);
+  /** 選択中IDを実際のQuestionに解決する(登録済み問題一覧の現在の並びに追従する) */
+  function currentManualSelection() {
+    const byId = new Map(listQuestions().map(q => [q.id, q]));
+    return [...manualSelectionIds].map(id => byId.get(id)).filter(Boolean);
+  }
 
-    const { selected, warnings } = selectQuestions(
-      allQuestions, learnedSet, learnedState.currentGrade, recentUses, settings,
-    );
-    showWarnings(warnings);
-
+  /** 選択中の問題一覧から列レイアウトを組み直し、プレビューを更新する */
+  function updatePreviewFromSelection() {
+    const selected = currentManualSelection();
     if (selected.length === 0) {
       currentColumns = null;
       tPdfBtn.disabled = true;
@@ -1185,6 +1297,7 @@
       return;
     }
 
+    const settings = loadSettings();
     // 列の高さ計測用に、プレビューと同じフォントで測る(相対比較のみに使うため解像度は問わない)
     const measureCanvas = document.createElement('canvas');
     const measureCtx = measureCanvas.getContext('2d');
@@ -1198,6 +1311,82 @@
     tPreview.style.display = 'block';
     drawTestPreview(columns);
     tPdfBtn.disabled = false;
+  }
+
+  /** 問題を選ぶ一覧(検索絞り込み・チェック状態)を再描画する */
+  function renderSelectPane() {
+    const all = listQuestions();
+    const settings = loadSettings();
+    tSelectTarget.textContent = String(settings.questionsPerTest);
+    const selectedWeight = all
+      .filter(q => manualSelectionIds.has(q.id))
+      .reduce((sum, q) => sum + q.weight, 0);
+    tSelectCount.textContent = String(selectedWeight);
+
+    const filtered = tSelectSearchQuery
+      ? all.filter(q => plainText(q.text).toLowerCase().includes(tSelectSearchQuery))
+      : all;
+
+    tSelectList.innerHTML = '';
+    if (filtered.length === 0) {
+      const empty = document.createElement('li');
+      empty.className = 'q-empty';
+      empty.textContent = all.length === 0
+        ? '問題がまだありません。「問題管理」タブで登録してください。'
+        : '検索条件に一致する問題がありません。';
+      tSelectList.appendChild(empty);
+      return;
+    }
+
+    filtered.forEach(q => {
+      const li = document.createElement('li');
+      li.dataset.id = q.id;
+      const included = manualSelectionIds.has(q.id);
+      if (included) li.classList.add('selected');
+
+      const check = document.createElement('span');
+      check.className = 't-select-check';
+      check.textContent = included ? '✓' : '';
+      li.appendChild(check);
+
+      const label = document.createElement('span');
+      label.className = 'q-label';
+      label.appendChild(buildQuestionLabel(q.text));
+      li.appendChild(label);
+
+      const grade = questionGrade(q.text);
+      const gradeBadge = document.createElement('span');
+      gradeBadge.className = 'badge grade-badge' + (grade ? '' : ' grade-unknown');
+      gradeBadge.textContent = grade ? `${grade}年` : '―';
+      li.appendChild(gradeBadge);
+
+      li.addEventListener('click', () => {
+        if (manualSelectionIds.has(q.id)) manualSelectionIds.delete(q.id);
+        else manualSelectionIds.add(q.id);
+        renderSelectPane();
+        updatePreviewFromSelection();
+      });
+      tSelectList.appendChild(li);
+    });
+  }
+
+  /** ランダム生成: 既存の選出ロジックの結果を選択状態に反映する(その後、一覧から手動で追加/除外できる) */
+  function generate() {
+    persistTestSettings();
+    const settings = loadSettings();
+    const learnedState = loadLearnedKanjiState();
+    const learnedSet = computeLearnedKanjiSet(learnedState);
+    const allQuestions = listQuestions();
+    const recentUses = countRecentUses(settings.recentHistoryCount);
+
+    const { selected, warnings } = selectQuestions(
+      allQuestions, learnedSet, learnedState.currentGrade, recentUses, settings,
+    );
+    showWarnings(warnings);
+
+    manualSelectionIds = new Set(selected.map(q => q.id));
+    renderSelectPane();
+    updatePreviewFromSelection();
   }
 
   /**
@@ -1227,10 +1416,21 @@
   }
 
   tGenerateBtn.addEventListener('click', generate);
+  tClearBtn.addEventListener('click', () => {
+    manualSelectionIds = new Set();
+    showWarnings([]);
+    renderSelectPane();
+    updatePreviewFromSelection();
+  });
+  tSelectSearch.addEventListener('input', () => {
+    tSelectSearchQuery = tSelectSearch.value.trim().toLowerCase();
+    renderSelectPane();
+  });
   tPdfBtn.addEventListener('click', exportPdf);
   new ResizeObserver(() => { if (currentColumns) drawTestPreview(currentColumns); }).observe(tPreview.parentElement);
 
   renderTestControls();
+  renderSelectPane();
 
   // ─────────────────────────────────────────────
   // 履歴確認タブ
