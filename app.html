@@ -105,6 +105,23 @@
     font-size: 12px;
     color: #6b7280;
   }
+  .q-legend {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 10px;
+    padding: 4px 12px 6px;
+    font-size: 11px;
+    color: #6b7280;
+    border-bottom: 1px solid #e5e7eb;
+    flex-wrap: wrap;
+  }
+  .q-legend-item { display: inline-flex; align-items: center; gap: 3px; }
+  .q-legend-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+  }
   #q-list {
     flex: 1 1 0;
     overflow-y: auto;
@@ -126,6 +143,24 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .q-char-writeBox {
+    background: #dbeafe;
+    color: #1e40af;
+    text-decoration: underline solid #1e40af 2px;
+    text-decoration-skip-ink: none;
+  }
+  .q-char-readBox {
+    background: #fef3c7;
+    color: #92400e;
+    text-decoration: underline dotted #92400e 2px;
+    text-decoration-skip-ink: none;
+  }
+  .q-char-bracketBox {
+    background: #ede9fe;
+    color: #6d28a9;
+    text-decoration: underline dashed #6d28a9 2px;
+    text-decoration-skip-ink: none;
   }
   #q-list li .badge {
     flex: 0 0 auto;
@@ -490,6 +525,11 @@
         <span>登録済み問題(<span id="q-count">0</span>件)</span>
         <button class="btn" id="q-new-btn">新規 (Esc)</button>
       </div>
+      <div class="q-legend">
+        <span class="q-legend-item"><span class="q-legend-swatch q-char-writeBox"></span>書き取り</span>
+        <span class="q-legend-item"><span class="q-legend-swatch q-char-readBox"></span>読み取り</span>
+        <span class="q-legend-item"><span class="q-legend-swatch q-char-bracketBox"></span>送り仮名</span>
+      </div>
       <ul id="q-list" tabindex="0"></ul>
     </div>
     <div class="q-edit-pane">
@@ -620,9 +660,10 @@
 <script type="module">
   import { Tategaki } from './dist/browser/tategaki.js';
   import {
-    listQuestions, saveQuestion, deleteQuestion, plainText, getQuestion, questionKinds, questionGrade,
+    listQuestions, saveQuestion, deleteQuestion, getQuestion, questionKinds, questionGrade,
     findDuplicate,
   } from './dist/browser/questionStore.js';
+  import { parse } from './dist/browser/parser.js';
   import { GRADE_KANJI } from './dist/browser/kanjiData.js';
   import {
     loadLearnedKanjiState, addLearnedKanji, removeLearnedKanji,
@@ -642,6 +683,27 @@
   const KIND_LABELS = { write: '書', read: '読', okurigana: '送' };
   function questionKindLabel(text) {
     return questionKinds(text).map(k => KIND_LABELS[k]).join('+');
+  }
+
+  const SEGMENT_KIND_LABELS = { writeBox: '書き取り', readBox: '読み取り', bracketBox: '送り仮名' };
+
+  /** 一覧表示用: 出題対象の文字が種別ごとに色分けされたラベルを組み立てる */
+  function buildQuestionLabel(text) {
+    const frag = document.createDocumentFragment();
+    const { segments } = parse(text);
+    if (segments.length === 0) {
+      frag.appendChild(document.createTextNode('(空)'));
+      return frag;
+    }
+    for (const seg of segments) {
+      const span = document.createElement('span');
+      span.className = `q-char q-char-${seg.kind}`;
+      span.textContent = seg.char;
+      const kindLabel = SEGMENT_KIND_LABELS[seg.kind];
+      if (kindLabel) span.title = seg.ruby ? `${kindLabel}(読み: ${seg.ruby})` : kindLabel;
+      frag.appendChild(span);
+    }
+    return frag;
   }
 
   // ─────────────────────────────────────────────
@@ -704,7 +766,7 @@
       li.dataset.id = q.id;
       const label = document.createElement('span');
       label.className = 'q-label';
-      label.textContent = plainText(q.text) || '(空)';
+      label.appendChild(buildQuestionLabel(q.text));
       li.appendChild(label);
       const kindLabel = questionKindLabel(q.text);
       if (kindLabel) {
