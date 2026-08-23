@@ -72,6 +72,12 @@ export function deleteQuestion(id: string): void {
   saveAll(loadAll().filter(q => q.id !== id));
 }
 
+/** 同一内容（記法テキスト完全一致）の既存問題を探す。excludeId は編集中の自分自身を除外するため。 */
+export function findDuplicate(text: string, excludeId?: string): Question | null {
+  const target = text.trim();
+  return loadAll().find(q => q.id !== excludeId && q.text.trim() === target) ?? null;
+}
+
 /** 記法を解いた見た目の文字列（一覧表示用。読みは表示せず漢字がそのまま見える形になる） */
 export function plainText(text: string): string {
   const { segments } = parse(text);
