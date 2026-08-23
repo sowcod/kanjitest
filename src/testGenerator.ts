@@ -90,6 +90,11 @@ export function selectQuestions(
   // ── 出題タイプ（読み／送り仮名）のニッチ枠を先に確保する ──
   // readRatio/okuriganaRatio が既定値0の場合、以降の nicheUsed は常に0になり、
   // 学年バランス選出に渡る予算は total のまま（既存挙動と完全に一致する）。
+  const isNicheKind = (q: Question): boolean => {
+    const kinds = questionKinds(q.text);
+    return kinds.includes('okurigana') || kinds.includes('read');
+  };
+
   const okuriganaPool = weightedShuffle(
     eligible.filter(q => questionKinds(q.text).includes('okurigana')),
     recentUses,
@@ -108,12 +113,14 @@ export function selectQuestions(
 
   const gradeBudget = total - nicheUsed;
 
+  // 読み／送り仮名の枠はニッチ枠(上記)のみで扱う。学年バランス側の通常プールに混ざると
+  // readRatio/okuriganaRatio=0 の設定でも読み・送り仮名問題が選ばれてしまうため、ここで除外する。
   const reviewPool = weightedShuffle(
-    eligible.filter(q => effectiveGrade(q, currentGrade) < currentGrade),
+    eligible.filter(q => effectiveGrade(q, currentGrade) < currentGrade && !isNicheKind(q)),
     recentUses,
   );
   const currentPool = weightedShuffle(
-    eligible.filter(q => effectiveGrade(q, currentGrade) >= currentGrade),
+    eligible.filter(q => effectiveGrade(q, currentGrade) >= currentGrade && !isNicheKind(q)),
     recentUses,
   );
 
@@ -128,9 +135,14 @@ export function selectQuestions(
   let remaining = step2.remainingWeight;
 
   if (remaining > 0) {
-    // ベストエフォート: ルール2（本文との重複回避）を緩めて残りの候補から埋める
-    const rest = [...okuriganaPool, ...readPool, ...reviewPool, ...currentPool]
-      .filter(q => !selected.some(s => s.id === q.id));
+    // ベストエフォート: ルール2（本文との重複回避）を緩めて残りの候補から埋める。
+    // ただし読み／送り仮名の各割合が0の設定の場合は、不足時のフォールバックでも混ぜない。
+    const rest = [
+      ...(settings.okuriganaRatio > 0 ? okuriganaPool : []),
+      ...(settings.readRatio > 0 ? readPool : []),
+      ...reviewPool,
+      ...currentPool,
+    ].filter(q => !selected.some(s => s.id === q.id));
     const before = selected.length;
     const step3 = fillGreedy(rest, selected, remaining, false);
     selected = step3.selected;
