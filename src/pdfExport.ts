@@ -15,7 +15,7 @@ export const A4_WIDTH_PT = 595.28;
 export const A4_HEIGHT_PT = 841.89;
 const PAGE_WIDTH_PX = Math.round(A4_WIDTH_PT * DPI_SCALE);
 const PAGE_HEIGHT_PX = Math.round(A4_HEIGHT_PT * DPI_SCALE);
-const NUM_COLUMNS = 5;
+const NUM_COLUMNS = 8;
 
 /**
  * 問題番号を丸数字の文字列にする。
