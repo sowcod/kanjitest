@@ -139,6 +139,14 @@
     color: #4338ca;
     background: #eef2ff;
   }
+  #q-list li .badge.grade-badge {
+    color: #065f46;
+    background: #d1fae5;
+  }
+  #q-list li .badge.grade-badge.grade-unknown {
+    color: #9ca3af;
+    background: #f3f4f6;
+  }
   #q-list li:hover { background: #f9fafb; }
   #q-list li.selected { background: #dbeafe; }
   #q-list:focus li.selected { background: #bfdbfe; outline: 1px solid #3b82d4; }
@@ -602,7 +610,7 @@
 <script type="module">
   import { Tategaki } from './dist/browser/tategaki.js';
   import {
-    listQuestions, saveQuestion, deleteQuestion, plainText, getQuestion, questionKinds,
+    listQuestions, saveQuestion, deleteQuestion, plainText, getQuestion, questionKinds, questionGrade,
   } from './dist/browser/questionStore.js';
   import { GRADE_KANJI } from './dist/browser/kanjiData.js';
   import {
@@ -693,6 +701,14 @@
         kindBadge.textContent = kindLabel;
         li.appendChild(kindBadge);
       }
+      const grade = questionGrade(q.text);
+      const gradeBadge = document.createElement('span');
+      gradeBadge.className = 'badge grade-badge' + (grade ? '' : ' grade-unknown');
+      gradeBadge.textContent = grade ? `${grade}年` : '―';
+      gradeBadge.title = grade
+        ? `${grade}年生で習う漢字を含む問題`
+        : '学年配当漢字を含まないため学年を判定できません';
+      li.appendChild(gradeBadge);
       const badge = document.createElement('span');
       badge.className = 'badge';
       badge.textContent = q.weight === 2 ? '長め' : '通常';

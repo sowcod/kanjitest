@@ -1,5 +1,5 @@
 import { parse } from './parser.js';
-import { isKanji } from './kanjiData.js';
+import { isKanji, kanjiGrade, Grade } from './kanjiData.js';
 
 /**
  * 問題データ
@@ -156,4 +156,18 @@ export function testedKanji(text: string): Set<string> {
     }
   }
   return result;
+}
+
+/**
+ * 問題の推定学年（一覧表示用）。出題対象漢字の最大学年、無ければ文中漢字の最大学年。
+ * 学年配当漢字を一つも含まない問題は null（学年不明）。
+ */
+export function questionGrade(text: string): Grade | null {
+  const testedGrades = [...testedKanji(text)].map(kanjiGrade).filter((g): g is Grade => g !== null);
+  if (testedGrades.length > 0) return Math.max(...testedGrades) as Grade;
+
+  const bodyGrades = [...bodyKanji(text)].map(kanjiGrade).filter((g): g is Grade => g !== null);
+  if (bodyGrades.length > 0) return Math.max(...bodyGrades) as Grade;
+
+  return null;
 }

@@ -1,5 +1,5 @@
-import { Question, targetKanji, bodyKanji, allKanji, testedKanji, questionKinds } from './questionStore.js';
-import { kanjiGrade, Grade } from './kanjiData.js';
+import { Question, targetKanji, bodyKanji, allKanji, questionKinds, questionGrade } from './questionStore.js';
+import { Grade } from './kanjiData.js';
 import { Settings } from './settingsStore.js';
 
 export interface SelectionResult {
@@ -12,23 +12,9 @@ function isSubset(sub: Set<string>, sup: Set<string>): boolean {
   return true;
 }
 
-/**
- * 問題が「問うている」漢字の学年（学年バランスの判定に使用）。
- * writeBox/bracketBox/readBox の対象漢字の最大学年。それが無ければ文中漢字の最大学年。
- * どちらも配当表に無い場合は現学年扱いにする（フォールバック）。
- */
-function questionGrade(q: Question, currentGrade: Grade): number {
-  const testedGrades = [...testedKanji(q.text)]
-    .map(ch => kanjiGrade(ch))
-    .filter((g): g is Grade => g !== null);
-  if (testedGrades.length > 0) return Math.max(...testedGrades);
-
-  const bodyGrades = [...bodyKanji(q.text)]
-    .map(ch => kanjiGrade(ch))
-    .filter((g): g is Grade => g !== null);
-  if (bodyGrades.length > 0) return Math.max(...bodyGrades);
-
-  return currentGrade;
+/** 学年配当漢字を含まず学年不明な問題は、現学年扱いにする（テスト選出専用のフォールバック） */
+function effectiveGrade(q: Question, currentGrade: Grade): number {
+  return questionGrade(q.text) ?? currentGrade;
 }
 
 /** 直近の出題回数が多いほど選ばれにくくする重み付きシャッフル（Efraimidis-Spirakis法） */
@@ -123,11 +109,11 @@ export function selectQuestions(
   const gradeBudget = total - nicheUsed;
 
   const reviewPool = weightedShuffle(
-    eligible.filter(q => questionGrade(q, currentGrade) < currentGrade),
+    eligible.filter(q => effectiveGrade(q, currentGrade) < currentGrade),
     recentUses,
   );
   const currentPool = weightedShuffle(
-    eligible.filter(q => questionGrade(q, currentGrade) >= currentGrade),
+    eligible.filter(q => effectiveGrade(q, currentGrade) >= currentGrade),
     recentUses,
   );
 
