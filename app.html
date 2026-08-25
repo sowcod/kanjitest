@@ -136,6 +136,27 @@
     outline: none;
   }
   .q-search-wrap input:focus { border-color: #3b82d4; }
+  .q-dataset-bar {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .q-dataset-bar select {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 5px 6px;
+    font-size: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+  }
+  .q-dataset-bar .btn {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
   #q-list {
     flex: 1 1 0;
     overflow-y: auto;
@@ -244,6 +265,12 @@
     font-size: 13px;
   }
   .q-form-row .spacer { flex: 1 1 auto; }
+  .q-form-row select {
+    padding: 4px 6px;
+    font-size: 13px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+  }
 
   .q-furigana-toolbar {
     display: flex;
@@ -398,6 +425,24 @@
     border-bottom: 1px solid #e5e7eb;
     font-size: 12px;
     color: #6b7280;
+  }
+  .t-dataset-filter {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .t-dataset-filter .t-dataset-filter-title {
+    font-size: 11px;
+    color: #6b7280;
+  }
+  .t-dataset-filter label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
   }
   #t-select-list {
     flex: 1 1 0;
@@ -567,6 +612,55 @@
     font-size: 13px;
     padding: 32px;
   }
+
+  /* ── 外部DB連携タブ ── */
+  #tab-remote {
+    flex-direction: column;
+    padding: 16px;
+    gap: 16px;
+    overflow-y: auto;
+  }
+  .r-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 480px;
+  }
+  .r-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .r-field label {
+    font-size: 12px;
+    color: #6b7280;
+  }
+  .r-field input {
+    padding: 6px 8px;
+    font-size: 13px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+  }
+  .r-actions {
+    display: flex;
+    gap: 8px;
+  }
+  #r-status {
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: #f3f4f6;
+    color: #374151;
+  }
+  #r-status.r-status-remote {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+  .r-hint {
+    font-size: 11px;
+    color: #9ca3af;
+    white-space: pre-wrap;
+  }
 </style>
 </head>
 <body>
@@ -576,6 +670,7 @@
   <button data-tab="kanji">漢字範囲管理</button>
   <button data-tab="test">テスト生成・印刷</button>
   <button data-tab="history">履歴確認</button>
+  <button data-tab="remote">外部DB連携</button>
 </div>
 
 <div id="tab-content">
@@ -586,6 +681,12 @@
       <div class="q-list-header">
         <span>登録済み問題(<span id="q-count">0</span>件)</span>
         <button class="btn" id="q-new-btn">新規 (Esc)</button>
+      </div>
+      <div class="q-dataset-bar">
+        <select id="q-dataset-filter"></select>
+        <button class="btn" id="q-dataset-new-btn" title="データセットを新規作成">＋新規</button>
+        <button class="btn" id="q-dataset-rename-btn" title="選択中のデータセット名を変更">名前変更</button>
+        <button class="btn" id="q-dataset-delete-btn" title="選択中のデータセットを削除">削除</button>
       </div>
       <div class="q-search-wrap">
         <input type="search" id="q-search" placeholder="文で検索(読み方ではなく読める文)">
@@ -637,6 +738,7 @@
         </div>
         <textarea id="q-editor" spellcheck="false" placeholder="例: 明日[あした]は &lt;遠&gt;[えん]足[そく]です。"></textarea>
         <div class="q-form-row">
+          <label>データセット: <select id="q-dataset-select"></select></label>
           <label><input type="radio" name="q-weight" value="1" checked> 通常(1問分)</label>
           <label><input type="radio" name="q-weight" value="2"> 長め(2問分・1列を単独で使う)</label>
           <span class="spacer"></span>
@@ -697,6 +799,7 @@
       <div class="t-select-header">
         問題を選ぶ(<span id="t-select-count">0</span>/<span id="t-select-target">10</span>)
       </div>
+      <div class="t-dataset-filter" id="t-dataset-filter"></div>
       <div class="q-search-wrap">
         <input type="search" id="t-select-search" placeholder="文で検索して追加/外す">
       </div>
@@ -729,6 +832,27 @@
     </div>
   </div>
 
+  <!-- ── 外部DB連携 ── -->
+  <div id="tab-remote" class="tab-panel">
+    <div class="r-form">
+      <p class="r-hint">Google Sheets x GAS(Google Apps Script)で作成したAPIのURLを登録すると、以後は問題・データセットの保存先がそのAPIに切り替わります(未登録ならブラウザ内(LocalStorage)にそのまま保存されます)。ローカルと外部DBの同期は行われません。切り替えた時点で見えるデータは切り替え先のものだけになります。</p>
+      <div class="r-field">
+        <label for="r-api-url">GAS Web App URL</label>
+        <input type="text" id="r-api-url" placeholder="https://script.google.com/macros/s/XXXX/exec">
+      </div>
+      <div class="r-field">
+        <label for="r-api-token">APIトークン(任意)</label>
+        <input type="text" id="r-api-token" placeholder="GAS側で照合する簡易トークン">
+      </div>
+      <div class="r-actions">
+        <button class="btn btn-primary" id="r-save-btn">保存して外部DBに切り替える</button>
+        <button class="btn btn-danger" id="r-clear-btn">解除してローカルに戻す</button>
+      </div>
+      <div id="r-status"></div>
+      <p class="r-hint">URLパラメータ「?ds=local」「?ds=remote」を付けて開くと、そのページ表示に限り一時的にモードを切り替えられます(通常の運用では使いません)。</p>
+    </div>
+  </div>
+
 </div>
 
 <script src="./dist/browser/kuromoji.js"></script>
@@ -738,6 +862,10 @@
     listQuestions, saveQuestion, deleteQuestion, getQuestion, questionGrade,
     findDuplicate, plainText,
   } from './dist/browser/questionStore.js';
+  import { listDatasets, saveDataset, deleteDataset, DEFAULT_DATASET_ID } from './dist/browser/datasetStore.js';
+  import {
+    loadRemoteConfig, saveRemoteConfig, clearRemoteConfig, resolveDataSourceMode,
+  } from './dist/browser/remoteConfigStore.js';
   import { parse } from './dist/browser/parser.js';
   import { GRADE_KANJI } from './dist/browser/kanjiData.js';
   import {
@@ -778,6 +906,40 @@
   }
 
   // ─────────────────────────────────────────────
+  // データセット(共通): 問題管理タブ・テスト生成タブの両方で使う
+  // ─────────────────────────────────────────────
+  let datasets = [];
+
+  async function refreshDatasets() {
+    try {
+      datasets = await listDatasets();
+    } catch (e) {
+      console.error('データセット取得に失敗しました:', e);
+      datasets = [];
+    }
+  }
+  await refreshDatasets();
+
+  /** <select>にデータセット一覧を反映する。includeAllなら先頭に「すべて」を追加する */
+  function populateDatasetOptions(selectEl, { includeAll } = {}) {
+    const prevValue = selectEl.value;
+    selectEl.innerHTML = '';
+    if (includeAll) {
+      const opt = document.createElement('option');
+      opt.value = '__all__';
+      opt.textContent = 'すべて';
+      selectEl.appendChild(opt);
+    }
+    datasets.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.name;
+      selectEl.appendChild(opt);
+    });
+    if ([...selectEl.options].some(o => o.value === prevValue)) selectEl.value = prevValue;
+  }
+
+  // ─────────────────────────────────────────────
   // タブ切り替え
   // ─────────────────────────────────────────────
   const tabButtons = document.querySelectorAll('#tabs button');
@@ -786,6 +948,7 @@
     kanji: document.getElementById('tab-kanji'),
     test: document.getElementById('tab-test'),
     history: document.getElementById('tab-history'),
+    remote: document.getElementById('tab-remote'),
   };
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -794,8 +957,9 @@
       btn.classList.add('active');
       tabPanels[btn.dataset.tab].classList.add('active');
       if (btn.dataset.tab === 'kanji') renderKanjiTab();
-      if (btn.dataset.tab === 'test') { renderTestControls(); renderSelectPane(); }
+      if (btn.dataset.tab === 'test') { renderTestControls(); renderDatasetFilterCheckboxes(); renderSelectPane(); }
       if (btn.dataset.tab === 'history') renderHistoryList();
+      if (btn.dataset.tab === 'remote') renderRemoteTab();
     });
   });
 
@@ -812,6 +976,16 @@
   const qDuplicateBar = document.getElementById('q-duplicate-bar');
   const qPreview = document.getElementById('q-preview');
   const qPreviewCtx = qPreview.getContext('2d');
+  const qDatasetFilter = document.getElementById('q-dataset-filter');
+  const qDatasetSelect = document.getElementById('q-dataset-select');
+  const qDatasetNewBtn = document.getElementById('q-dataset-new-btn');
+  const qDatasetRenameBtn = document.getElementById('q-dataset-rename-btn');
+  const qDatasetDeleteBtn = document.getElementById('q-dataset-delete-btn');
+
+  function renderDatasetControls() {
+    populateDatasetOptions(qDatasetFilter, { includeAll: true });
+    populateDatasetOptions(qDatasetSelect, { includeAll: false });
+  }
 
   // ショートカットキーの表示はOSごとに変える(Mac: ⌘、その他: Ctrl)。
   qSaveBtn.textContent = `保存 (${isMac ? '⌘Enter' : 'Ctrl+Enter'})`;
@@ -828,8 +1002,22 @@
     return plainText(q.text).toLowerCase().includes(query);
   }
 
-  function refreshQuestionList() {
-    const all = listQuestions();
+  async function refreshQuestionList() {
+    const filterId = qDatasetFilter.value;
+    let all;
+    try {
+      all = await listQuestions(filterId === '__all__' ? undefined : { datasetIds: [filterId] });
+    } catch (e) {
+      console.error('問題一覧の取得に失敗しました:', e);
+      questions = [];
+      qCount.textContent = '0';
+      qList.innerHTML = '';
+      const errLi = document.createElement('li');
+      errLi.className = 'q-empty';
+      errLi.textContent = '外部DBへの接続に失敗しました: ' + e;
+      qList.appendChild(errLi);
+      return;
+    }
     questions = qSearchQuery ? all.filter(q => matchesQuestionSearch(q, qSearchQuery)) : all;
     qCount.textContent = qSearchQuery ? `${questions.length}/${all.length}` : String(all.length);
     qList.innerHTML = '';
@@ -879,6 +1067,7 @@
     editingId = q.id;
     qEditor.value = q.text;
     document.querySelector(`input[name="q-weight"][value="${q.weight}"]`).checked = true;
+    if ([...qDatasetSelect.options].some(o => o.value === q.datasetId)) qDatasetSelect.value = q.datasetId;
     qDeleteBtn.disabled = false;
     drawQuestionPreview();
     checkDuplicateWarning();
@@ -890,6 +1079,8 @@
     selectedIndex = -1;
     qEditor.value = '';
     document.querySelector('input[name="q-weight"][value="1"]').checked = true;
+    const defaultDatasetId = qDatasetFilter.value !== '__all__' ? qDatasetFilter.value : (datasets[0]?.id ?? DEFAULT_DATASET_ID);
+    if ([...qDatasetSelect.options].some(o => o.value === defaultDatasetId)) qDatasetSelect.value = defaultDatasetId;
     qDeleteBtn.disabled = true;
     highlightSelected();
     drawQuestionPreview();
@@ -898,9 +1089,10 @@
   }
 
   /** 編集中のテキストと同一内容の問題が既にあれば警告バーを表示する(非ブロッキング) */
-  function checkDuplicateWarning() {
+  async function checkDuplicateWarning() {
     const text = qEditor.value.trim();
-    const dup = text ? findDuplicate(text, editingId) : null;
+    const datasetId = qDatasetSelect.value;
+    const dup = text ? await findDuplicate(text, datasetId, editingId) : null;
     qDuplicateBar.style.display = dup ? 'block' : 'none';
     qDuplicateBar.textContent = dup ? '⚠ 同じ内容の問題が既に登録されています。' : '';
   }
@@ -961,25 +1153,26 @@
     }
   }
 
-  function saveCurrent() {
+  async function saveCurrent() {
     const text = qEditor.value.trim();
     if (!text) return;
-    const dup = findDuplicate(text, editingId);
+    const datasetId = qDatasetSelect.value;
+    const dup = await findDuplicate(text, datasetId, editingId);
     if (dup && !confirm('同じ内容の問題が既に登録されています。それでも保存しますか？')) return;
-    const saved = saveQuestion({ id: editingId ?? undefined, text, weight: currentWeight() });
+    const saved = await saveQuestion({ id: editingId ?? undefined, text, weight: currentWeight(), datasetId });
     editingId = saved.id;
     qDeleteBtn.disabled = false;
-    refreshQuestionList();
+    await refreshQuestionList();
     selectedIndex = questions.findIndex(q => q.id === saved.id);
     highlightSelected();
   }
 
-  function deleteCurrent() {
+  async function deleteCurrent() {
     if (!editingId) return;
     if (!confirm('この問題を削除しますか？')) return;
-    deleteQuestion(editingId);
+    await deleteQuestion(editingId);
     startNew();
-    refreshQuestionList();
+    await refreshQuestionList();
   }
 
   qEditor.addEventListener('input', drawQuestionPreview);
@@ -1112,26 +1305,84 @@
   qNewBtn.addEventListener('click', startNew);
   document.querySelectorAll('input[name="q-weight"]').forEach(r => r.addEventListener('change', drawQuestionPreview));
 
-  qSearch.addEventListener('input', () => {
+  qSearch.addEventListener('input', async () => {
     qSearchQuery = qSearch.value.trim().toLowerCase();
     // 検索で絞り込んでも編集中の項目が結果に残っていれば選択状態を保つ
     selectedIndex = -1;
-    refreshQuestionList();
+    await refreshQuestionList();
     if (editingId) selectedIndex = questions.findIndex(q => q.id === editingId);
     highlightSelected();
   });
-  qSearch.addEventListener('keydown', e => {
+  qSearch.addEventListener('keydown', async e => {
     if (e.key === 'Escape') {
       e.preventDefault();
       qSearch.value = '';
       qSearchQuery = '';
-      refreshQuestionList();
+      await refreshQuestionList();
       if (editingId) selectedIndex = questions.findIndex(q => q.id === editingId);
       highlightSelected();
     }
   });
 
-  refreshQuestionList();
+  qDatasetFilter.addEventListener('change', async () => {
+    selectedIndex = -1;
+    await refreshQuestionList();
+    highlightSelected();
+  });
+
+  qDatasetNewBtn.addEventListener('click', async () => {
+    const name = prompt('新しいデータセット名を入力してください');
+    if (!name || !name.trim()) return;
+    const created = await saveDataset({ name: name.trim() });
+    await refreshDatasets();
+    renderDatasetControls();
+    qDatasetFilter.value = created.id;
+    const settings = loadSettings();
+    if (settings.sourceDatasetIds.length > 0) {
+      saveSettings({ ...settings, sourceDatasetIds: [...settings.sourceDatasetIds, created.id] });
+    }
+    await refreshQuestionList();
+    renderDatasetFilterCheckboxes();
+  });
+
+  qDatasetRenameBtn.addEventListener('click', async () => {
+    const id = qDatasetFilter.value;
+    if (id === '__all__') { alert('名前を変更するデータセットを選んでください。'); return; }
+    const current = datasets.find(d => d.id === id);
+    const name = prompt('新しいデータセット名を入力してください', current?.name ?? '');
+    if (!name || !name.trim()) return;
+    await saveDataset({ id, name: name.trim() });
+    await refreshDatasets();
+    renderDatasetControls();
+    qDatasetFilter.value = id;
+    renderDatasetFilterCheckboxes();
+  });
+
+  qDatasetDeleteBtn.addEventListener('click', async () => {
+    const id = qDatasetFilter.value;
+    if (id === '__all__') { alert('削除するデータセットを選んでください。'); return; }
+    if (datasets.length <= 1) { alert('最後のデータセットは削除できません。'); return; }
+    const inUse = await listQuestions({ datasetIds: [id] });
+    if (inUse.length > 0) {
+      alert(`このデータセットには問題が${inUse.length}件残っているため削除できません。先に問題を別のデータセットへ移すか削除してください。`);
+      return;
+    }
+    const name = datasets.find(d => d.id === id)?.name ?? id;
+    if (!confirm(`データセット「${name}」を削除しますか？`)) return;
+    await deleteDataset(id);
+    await refreshDatasets();
+    renderDatasetControls();
+    qDatasetFilter.value = '__all__';
+    const settings = loadSettings();
+    if (settings.sourceDatasetIds.includes(id)) {
+      saveSettings({ ...settings, sourceDatasetIds: settings.sourceDatasetIds.filter(x => x !== id) });
+    }
+    await refreshQuestionList();
+    renderDatasetFilterCheckboxes();
+  });
+
+  renderDatasetControls();
+  await refreshQuestionList();
   drawQuestionPreview();
 
   // ─────────────────────────────────────────────
@@ -1214,11 +1465,45 @@
   const tSelectList = document.getElementById('t-select-list');
   const tSelectCount = document.getElementById('t-select-count');
   const tSelectTarget = document.getElementById('t-select-target');
+  const tDatasetFilter = document.getElementById('t-dataset-filter');
 
   let currentColumns = null;
   // 選択中の問題(順序は選出時のまま保持。列割り付けはassignColumns側で高さバランスを取るため順序自体は結果に影響しない)
   let manualSelectionIds = new Set();
   let tSelectSearchQuery = '';
+
+  /** 出題元として有効なデータセットID一覧。未選択(空配列)なら既知の全データセットを対象とする */
+  function activeSourceDatasetIds() {
+    const settings = loadSettings();
+    return settings.sourceDatasetIds.length > 0 ? settings.sourceDatasetIds : datasets.map(d => d.id);
+  }
+
+  /** 「出題元データセット」チェックボックス群を再描画する */
+  function renderDatasetFilterCheckboxes() {
+    const sourceSet = new Set(activeSourceDatasetIds());
+    tDatasetFilter.innerHTML = '';
+    const title = document.createElement('div');
+    title.className = 't-dataset-filter-title';
+    title.textContent = '出題元データセット';
+    tDatasetFilter.appendChild(title);
+    datasets.forEach(d => {
+      const label = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = sourceSet.has(d.id);
+      cb.addEventListener('change', async () => {
+        const current = new Set(activeSourceDatasetIds());
+        if (cb.checked) current.add(d.id);
+        else current.delete(d.id);
+        saveSettings({ ...loadSettings(), sourceDatasetIds: [...current] });
+        await renderSelectPane();
+        await updatePreviewFromSelection();
+      });
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(d.name));
+      tDatasetFilter.appendChild(label);
+    });
+  }
 
   function renderTestControls() {
     const settings = loadSettings();
@@ -1266,14 +1551,21 @@
   }
 
   /** 選択中IDを実際のQuestionに解決する(登録済み問題一覧の現在の並びに追従する) */
-  function currentManualSelection() {
-    const byId = new Map(listQuestions().map(q => [q.id, q]));
+  async function currentManualSelection() {
+    let all;
+    try {
+      all = await listQuestions();
+    } catch (e) {
+      console.error('問題一覧の取得に失敗しました:', e);
+      return [];
+    }
+    const byId = new Map(all.map(q => [q.id, q]));
     return [...manualSelectionIds].map(id => byId.get(id)).filter(Boolean);
   }
 
   /** 選択中の問題一覧から列レイアウトを組み直し、プレビューを更新する */
-  function updatePreviewFromSelection() {
-    const selected = currentManualSelection();
+  async function updatePreviewFromSelection() {
+    const selected = await currentManualSelection();
     if (selected.length === 0) {
       currentColumns = null;
       tPdfBtn.disabled = true;
@@ -1299,13 +1591,18 @@
   }
 
   /** 問題を選ぶ一覧(検索絞り込み・チェック状態)を再描画する */
-  function renderSelectPane() {
-    const all = listQuestions();
+  async function renderSelectPane() {
+    let all;
+    try {
+      all = await listQuestions({ datasetIds: activeSourceDatasetIds() });
+    } catch (e) {
+      console.error('問題一覧の取得に失敗しました:', e);
+      all = [];
+    }
     const settings = loadSettings();
     tSelectTarget.textContent = String(settings.questionsPerTest);
-    const selectedWeight = all
-      .filter(q => manualSelectionIds.has(q.id))
-      .reduce((sum, q) => sum + q.weight, 0);
+    const selected = await currentManualSelection();
+    const selectedWeight = selected.reduce((sum, q) => sum + q.weight, 0);
     tSelectCount.textContent = String(selectedWeight);
 
     const filtered = tSelectSearchQuery
@@ -1345,23 +1642,29 @@
       gradeBadge.textContent = grade ? `${grade}年` : '―';
       li.appendChild(gradeBadge);
 
-      li.addEventListener('click', () => {
+      li.addEventListener('click', async () => {
         if (manualSelectionIds.has(q.id)) manualSelectionIds.delete(q.id);
         else manualSelectionIds.add(q.id);
-        renderSelectPane();
-        updatePreviewFromSelection();
+        await renderSelectPane();
+        await updatePreviewFromSelection();
       });
       tSelectList.appendChild(li);
     });
   }
 
   /** ランダム生成: 既存の選出ロジックの結果を選択状態に反映する(その後、一覧から手動で追加/除外できる) */
-  function generate() {
+  async function generate() {
     persistTestSettings();
     const settings = loadSettings();
     const learnedState = loadLearnedKanjiState();
     const learnedSet = computeLearnedKanjiSet(learnedState);
-    const allQuestions = listQuestions();
+    let allQuestions;
+    try {
+      allQuestions = await listQuestions({ datasetIds: activeSourceDatasetIds() });
+    } catch (e) {
+      alert('外部DBへの接続に失敗しました: ' + e);
+      return;
+    }
     const recentUses = countRecentUses(settings.recentHistoryCount);
 
     const { selected, warnings } = selectQuestions(
@@ -1370,8 +1673,8 @@
     showWarnings(warnings);
 
     manualSelectionIds = new Set(selected.map(q => q.id));
-    renderSelectPane();
-    updatePreviewFromSelection();
+    await renderSelectPane();
+    await updatePreviewFromSelection();
   }
 
   /**
@@ -1401,11 +1704,11 @@
   }
 
   tGenerateBtn.addEventListener('click', generate);
-  tClearBtn.addEventListener('click', () => {
+  tClearBtn.addEventListener('click', async () => {
     manualSelectionIds = new Set();
     showWarnings([]);
-    renderSelectPane();
-    updatePreviewFromSelection();
+    await renderSelectPane();
+    await updatePreviewFromSelection();
   });
   tSelectSearch.addEventListener('input', () => {
     tSelectSearchQuery = tSelectSearch.value.trim().toLowerCase();
@@ -1415,7 +1718,8 @@
   new ResizeObserver(() => { if (currentColumns) drawTestPreview(currentColumns); }).observe(tPreview.parentElement);
 
   renderTestControls();
-  renderSelectPane();
+  renderDatasetFilterCheckboxes();
+  await renderSelectPane();
 
   // ─────────────────────────────────────────────
   // 履歴確認タブ
@@ -1477,11 +1781,11 @@
       li.appendChild(label);
       li.appendChild(deleteBtn);
       if (selectedHistoryEntry && selectedHistoryEntry.date === entry.date) li.classList.add('selected');
-      li.addEventListener('click', () => {
+      li.addEventListener('click', async () => {
         [...hList.children].forEach(c => c.classList.remove('selected'));
         li.classList.add('selected');
         selectedHistoryEntry = entry;
-        drawHistoryDetail(entry);
+        await drawHistoryDetail(entry);
       });
       hList.appendChild(li);
     });
@@ -1496,11 +1800,11 @@
     hWarnings.style.display = 'block';
   }
 
-  function drawHistoryDetail(entry) {
+  async function drawHistoryDetail(entry) {
     const found = [];
     let missingCount = 0;
     for (const id of entry.questionIds) {
-      const q = getQuestion(id);
+      const q = await getQuestion(id);
       if (q) found.push(q);
       else missingCount++;
     }
@@ -1557,6 +1861,43 @@
       hReprintBtn.disabled = false;
       hReprintBtn.textContent = 'この回をもう一度印刷する';
     }
+  });
+
+  // ─────────────────────────────────────────────
+  // 外部DB連携タブ
+  // ─────────────────────────────────────────────
+  const rApiUrl = document.getElementById('r-api-url');
+  const rApiToken = document.getElementById('r-api-token');
+  const rSaveBtn = document.getElementById('r-save-btn');
+  const rClearBtn = document.getElementById('r-clear-btn');
+  const rStatus = document.getElementById('r-status');
+
+  function renderRemoteTab() {
+    const config = loadRemoteConfig();
+    rApiUrl.value = config.apiUrl ?? '';
+    rApiToken.value = config.apiToken ?? '';
+    const mode = resolveDataSourceMode();
+    rStatus.classList.toggle('r-status-remote', mode === 'remote');
+    if (mode === 'remote') {
+      rStatus.textContent = `外部DBに接続中(URL: ${config.apiUrl})`;
+    } else {
+      rStatus.textContent = 'ローカル(ブラウザ内保存)で動作中';
+    }
+  }
+
+  rSaveBtn.addEventListener('click', () => {
+    const url = rApiUrl.value.trim();
+    if (!url) { alert('URLを入力してください。'); return; }
+    saveRemoteConfig({ apiUrl: url, apiToken: rApiToken.value.trim() || null });
+    alert('保存しました。以後、問題・データセットは外部DBに保存されます。ページを再読み込みします。');
+    location.reload();
+  });
+
+  rClearBtn.addEventListener('click', () => {
+    if (!confirm('外部DB接続を解除し、ローカル保存に戻しますか？')) return;
+    clearRemoteConfig();
+    alert('解除しました。ページを再読み込みします。');
+    location.reload();
   });
 </script>
 </body>

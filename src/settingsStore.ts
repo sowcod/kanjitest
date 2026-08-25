@@ -12,6 +12,12 @@ export interface Settings {
   readRatio: number;
   /** 送り仮名問題の目標割合（0〜1）。既定 0。 */
   okuriganaRatio: number;
+  /**
+   * テスト生成の出題元として使うデータセットIDの一覧。
+   * 空配列は「まだ選択されていない」を意味し、呼び出し側(app.html)が
+   * 初回だけ既知の全データセットIDで初期化して保存する(挙動を後方互換に保つため)。
+   */
+  sourceDatasetIds: string[];
 }
 
 const STORAGE_KEY = 'kanji-test-settings';
@@ -23,6 +29,7 @@ const DEFAULT_SETTINGS: Settings = {
   slotsPerColumn: 2,
   readRatio: 0,
   okuriganaRatio: 0,
+  sourceDatasetIds: [],
 };
 
 export function loadSettings(): Settings {

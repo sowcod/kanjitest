@@ -1,5 +1,8 @@
 import { parse } from './parser.js';
 import { isKanji, kanjiGrade, Grade } from './kanjiData.js';
+import { resolveDataSourceMode } from './remoteConfigStore.js';
+import { remoteGet, remotePost } from './remoteApiClient.js';
+import { DEFAULT_DATASET_ID } from './datasetStore.js';
 
 /**
  * 問題データ
@@ -11,71 +14,159 @@ export interface Question {
   text: string;
   /** 1 = 通常の1問。2 = 「2問相当」の長め問題（テスト内で列を単独で占有する） */
   weight: 1 | 2;
+  /** 所属データセット(漢字ワーク由来/学校の授業由来/試験問題由来 など問題を整理する単位) */
+  datasetId: string;
   createdAt: string;
   updatedAt: string;
 }
 
+// ────────────────────────────────────────────────────────────
+// データ層(外部DB切替対応): 公開API(下部)はすべて非同期。
+// LocalStorage実装(既定)とリモート実装(GAS Web App、未設定時は使われない)を
+// resolveDataSourceMode() で切り替える。詳細な通信仕様は remote-api-design.md 参照。
+// ────────────────────────────────────────────────────────────
+
+interface QuestionRepository {
+  list(filter?: { datasetIds?: string[] }): Promise<Question[]>;
+  save(input: { id?: string; text: string; weight: 1 | 2; datasetId: string }): Promise<Question>;
+  remove(id: string): Promise<void>;
+}
+
 const STORAGE_KEY = 'kanji-test-questions';
 
-function loadAll(): Question[] {
+function loadAllLocal(): Question[] {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    // 旧データ(datasetId概念が無かった頃に保存された問題)を既定データセットへ移行する。
+    let migrated = false;
+    const withDataset: Question[] = parsed.map((q: Partial<Question>) => {
+      if (q && !q.datasetId) {
+        migrated = true;
+        return { ...q, datasetId: DEFAULT_DATASET_ID } as Question;
+      }
+      return q as Question;
+    });
+    if (migrated) saveAllLocal(withDataset);
+    return withDataset;
   } catch {
     return [];
   }
 }
 
-function saveAll(questions: Question[]): void {
+function saveAllLocal(questions: Question[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(questions));
 }
 
-/** 登録済み問題を一覧で返す（作成日時の降順） */
-export function listQuestions(): Question[] {
-  return loadAll().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+class LocalQuestionRepository implements QuestionRepository {
+  async list(filter?: { datasetIds?: string[] }): Promise<Question[]> {
+    const all = loadAllLocal();
+    return filter?.datasetIds?.length ? all.filter(q => filter.datasetIds!.includes(q.datasetId)) : all;
+  }
+
+  async save(input: { id?: string; text: string; weight: 1 | 2; datasetId: string }): Promise<Question> {
+    const all = loadAllLocal();
+    const now = new Date().toISOString();
+
+    if (input.id) {
+      const idx = all.findIndex(q => q.id === input.id);
+      if (idx >= 0) {
+        const updated: Question = {
+          ...all[idx],
+          text: input.text,
+          weight: input.weight,
+          datasetId: input.datasetId,
+          updatedAt: now,
+        };
+        all[idx] = updated;
+        saveAllLocal(all);
+        return updated;
+      }
+    }
+
+    const created: Question = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text: input.text,
+      weight: input.weight,
+      datasetId: input.datasetId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    all.push(created);
+    saveAllLocal(all);
+    return created;
+  }
+
+  async remove(id: string): Promise<void> {
+    saveAllLocal(loadAllLocal().filter(q => q.id !== id));
+  }
 }
 
-export function getQuestion(id: string): Question | null {
-  return loadAll().find(q => q.id === id) ?? null;
+class RemoteQuestionRepository implements QuestionRepository {
+  async list(filter?: { datasetIds?: string[] }): Promise<Question[]> {
+    const params: Record<string, string> = {};
+    if (filter?.datasetIds?.length) params.datasetIds = filter.datasetIds.join(',');
+    const { questions } = await remoteGet<{ questions: Question[] }>('listQuestions', params);
+    return questions;
+  }
+
+  async save(input: { id?: string; text: string; weight: 1 | 2; datasetId: string }): Promise<Question> {
+    const { question } = await remotePost<{ question: Question }>('saveQuestion', { question: input });
+    return question;
+  }
+
+  async remove(id: string): Promise<void> {
+    await remotePost('deleteQuestion', { id });
+  }
+}
+
+const localRepo = new LocalQuestionRepository();
+const remoteRepo = new RemoteQuestionRepository();
+
+function repo(): QuestionRepository {
+  return resolveDataSourceMode() === 'remote' ? remoteRepo : localRepo;
+}
+
+// ────────────────────────────────────────────────────────────
+// 公開API
+// ────────────────────────────────────────────────────────────
+
+/** 登録済み問題を一覧で返す（作成日時の降順）。datasetIds を渡すとそのデータセットのみに絞り込む。 */
+export async function listQuestions(filter?: { datasetIds?: string[] }): Promise<Question[]> {
+  const all = await repo().list(filter);
+  return all.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function getQuestion(id: string): Promise<Question | null> {
+  const all = await repo().list();
+  return all.find(q => q.id === id) ?? null;
 }
 
 /** 新規登録または更新する。id を渡さない場合は新規作成する。 */
-export function saveQuestion(input: { id?: string; text: string; weight: 1 | 2 }): Question {
-  const all = loadAll();
-  const now = new Date().toISOString();
-
-  if (input.id) {
-    const idx = all.findIndex(q => q.id === input.id);
-    if (idx >= 0) {
-      const updated: Question = { ...all[idx], text: input.text, weight: input.weight, updatedAt: now };
-      all[idx] = updated;
-      saveAll(all);
-      return updated;
-    }
-  }
-
-  const created: Question = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    text: input.text,
-    weight: input.weight,
-    createdAt: now,
-    updatedAt: now,
-  };
-  all.push(created);
-  saveAll(all);
-  return created;
+export async function saveQuestion(input: {
+  id?: string;
+  text: string;
+  weight: 1 | 2;
+  datasetId: string;
+}): Promise<Question> {
+  return repo().save(input);
 }
 
-export function deleteQuestion(id: string): void {
-  saveAll(loadAll().filter(q => q.id !== id));
+export async function deleteQuestion(id: string): Promise<void> {
+  return repo().remove(id);
 }
 
-/** 同一内容（記法テキスト完全一致）の既存問題を探す。excludeId は編集中の自分自身を除外するため。 */
-export function findDuplicate(text: string, excludeId?: string): Question | null {
+/**
+ * 同一データセット内で同一内容（記法テキスト完全一致）の既存問題を探す。
+ * excludeId は編集中の自分自身を除外するため。データセットが異なれば「重複」とは扱わない
+ * (漢字ワーク由来と試験問題由来で同じ文が使われることは想定内のため)。
+ */
+export async function findDuplicate(text: string, datasetId: string, excludeId?: string): Promise<Question | null> {
   const target = text.trim();
-  return loadAll().find(q => q.id !== excludeId && q.text.trim() === target) ?? null;
+  const all = await repo().list({ datasetIds: [datasetId] });
+  return all.find(q => q.id !== excludeId && q.text.trim() === target) ?? null;
 }
 
 /** 記法を解いた見た目の文字列（一覧表示用。読みは表示せず漢字がそのまま見える形になる） */
