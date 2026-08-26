@@ -1070,6 +1070,7 @@
     if ([...qDatasetSelect.options].some(o => o.value === q.datasetId)) qDatasetSelect.value = q.datasetId;
     qDeleteBtn.disabled = false;
     drawQuestionPreview();
+    clearTimeout(duplicateCheckTimer);
     checkDuplicateWarning();
     qEditor.focus();
   }
@@ -1084,6 +1085,7 @@
     qDeleteBtn.disabled = true;
     highlightSelected();
     drawQuestionPreview();
+    clearTimeout(duplicateCheckTimer);
     checkDuplicateWarning();
     qEditor.focus();
   }
@@ -1095,6 +1097,15 @@
     const dup = text ? await findDuplicate(text, datasetId, editingId) : null;
     qDuplicateBar.style.display = dup ? 'block' : 'none';
     qDuplicateBar.textContent = dup ? '⚠ 同じ内容の問題が既に登録されています。' : '';
+  }
+
+  // 入力ごとに findDuplicate を呼ぶと(リモートDB接続時は)キー入力ごとに問い合わせが発生するため、
+  // 入力が一定時間止まってからチェックする(結果はキャッシュ済みの一覧を見るだけなので通信自体は増えない想定だが、
+  // 呼び出し頻度そのものを抑えるためデバウンスする)。
+  let duplicateCheckTimer = null;
+  function scheduleDuplicateCheck() {
+    clearTimeout(duplicateCheckTimer);
+    duplicateCheckTimer = setTimeout(checkDuplicateWarning, 300);
   }
 
   function currentWeight() {
@@ -1176,7 +1187,7 @@
   }
 
   qEditor.addEventListener('input', drawQuestionPreview);
-  qEditor.addEventListener('input', checkDuplicateWarning);
+  qEditor.addEventListener('input', scheduleDuplicateCheck);
   new ResizeObserver(drawQuestionPreview).observe(qPreview.parentElement);
 
   qEditor.addEventListener('keydown', e => {

@@ -27,7 +27,7 @@ export interface Question {
 // ────────────────────────────────────────────────────────────
 
 interface QuestionRepository {
-  list(filter?: { datasetIds?: string[] }): Promise<Question[]>;
+  list(): Promise<Question[]>;
   save(input: { id?: string; text: string; weight: 1 | 2; datasetId: string }): Promise<Question>;
   remove(id: string): Promise<void>;
 }
@@ -61,9 +61,8 @@ function saveAllLocal(questions: Question[]): void {
 }
 
 class LocalQuestionRepository implements QuestionRepository {
-  async list(filter?: { datasetIds?: string[] }): Promise<Question[]> {
-    const all = loadAllLocal();
-    return filter?.datasetIds?.length ? all.filter(q => filter.datasetIds!.includes(q.datasetId)) : all;
+  async list(): Promise<Question[]> {
+    return loadAllLocal();
   }
 
   async save(input: { id?: string; text: string; weight: 1 | 2; datasetId: string }): Promise<Question> {
@@ -105,10 +104,8 @@ class LocalQuestionRepository implements QuestionRepository {
 }
 
 class RemoteQuestionRepository implements QuestionRepository {
-  async list(filter?: { datasetIds?: string[] }): Promise<Question[]> {
-    const params: Record<string, string> = {};
-    if (filter?.datasetIds?.length) params.datasetIds = filter.datasetIds.join(',');
-    const { questions } = await remoteGet<{ questions: Question[] }>('listQuestions', params);
+  async list(): Promise<Question[]> {
+    const { questions } = await remoteGet<{ questions: Question[] }>('listQuestions');
     return questions;
   }
 
@@ -130,17 +127,31 @@ function repo(): QuestionRepository {
 }
 
 // ────────────────────────────────────────────────────────────
+// キャッシュ: 問題一覧は入力中の重複チェックなど短時間に何度も参照されるため、
+// メモリ上に保持する(全件・未フィルタ)。保存/削除時はサーバー(またはローカル)への
+// 書き込み成功後にキャッシュを直接パッチし、再取得はしない。
+// ────────────────────────────────────────────────────────────
+
+let cache: Question[] | null = null;
+
+async function loadAll(): Promise<Question[]> {
+  if (cache === null) cache = await repo().list();
+  return cache;
+}
+
+// ────────────────────────────────────────────────────────────
 // 公開API
 // ────────────────────────────────────────────────────────────
 
 /** 登録済み問題を一覧で返す（作成日時の降順）。datasetIds を渡すとそのデータセットのみに絞り込む。 */
 export async function listQuestions(filter?: { datasetIds?: string[] }): Promise<Question[]> {
-  const all = await repo().list(filter);
-  return all.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const all = await loadAll();
+  const filtered = filter?.datasetIds?.length ? all.filter(q => filter.datasetIds!.includes(q.datasetId)) : all;
+  return filtered.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function getQuestion(id: string): Promise<Question | null> {
-  const all = await repo().list();
+  const all = await loadAll();
   return all.find(q => q.id === id) ?? null;
 }
 
@@ -151,11 +162,18 @@ export async function saveQuestion(input: {
   weight: 1 | 2;
   datasetId: string;
 }): Promise<Question> {
-  return repo().save(input);
+  const saved = await repo().save(input);
+  if (cache !== null) {
+    const idx = cache.findIndex(q => q.id === saved.id);
+    if (idx >= 0) cache[idx] = saved;
+    else cache.push(saved);
+  }
+  return saved;
 }
 
 export async function deleteQuestion(id: string): Promise<void> {
-  return repo().remove(id);
+  await repo().remove(id);
+  if (cache !== null) cache = cache.filter(q => q.id !== id);
 }
 
 /**
@@ -165,8 +183,8 @@ export async function deleteQuestion(id: string): Promise<void> {
  */
 export async function findDuplicate(text: string, datasetId: string, excludeId?: string): Promise<Question | null> {
   const target = text.trim();
-  const all = await repo().list({ datasetIds: [datasetId] });
-  return all.find(q => q.id !== excludeId && q.text.trim() === target) ?? null;
+  const all = await loadAll();
+  return all.find(q => q.datasetId === datasetId && q.id !== excludeId && q.text.trim() === target) ?? null;
 }
 
 /** 記法を解いた見た目の文字列（一覧表示用。読みは表示せず漢字がそのまま見える形になる） */
