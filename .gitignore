@@ -1,5 +1,9 @@
 # Dependencies
 node_modules/
+gas/node_modules/
+
+# GAS(clasp): scriptId等の環境固有設定はコミットしない。gas/.clasp.json.example を参照
+gas/.clasp.json
 
 # Build output
 dist/

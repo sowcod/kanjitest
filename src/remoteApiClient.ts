@@ -10,6 +10,25 @@ function resolveConfig(): { apiUrl: string; apiToken: string | null } {
   return { apiUrl: config.apiUrl, apiToken: config.apiToken };
 }
 
+/**
+ * GAS Web Appは正常終了したスクリプトからのレスポンスに常に200を返すため(スクリプト側から
+ * ステータスコードを制御できない)、成否は必ずボディの `error` フィールドで判定する。
+ * res.ok===false になるのは、GAS側のダウン等でGoogleの汎用エラーページ(非JSON)が返る場合のみ
+ * ここではその場合も同じ経路で「JSONパース失敗」として扱う。
+ */
+async function parseRemoteResponse<T>(res: Response): Promise<T> {
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    throw new Error(`外部DBへの通信に失敗しました(${res.status})`);
+  }
+  if (body && typeof body === 'object' && 'error' in body) {
+    throw new Error(`外部DBへの通信に失敗しました: ${(body as { error: unknown }).error}`);
+  }
+  return body as T;
+}
+
 export async function remoteGet<T>(action: string, params: Record<string, string> = {}): Promise<T> {
   const { apiUrl, apiToken } = resolveConfig();
   const url = new URL(apiUrl);
@@ -18,8 +37,7 @@ export async function remoteGet<T>(action: string, params: Record<string, string
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
 
   const res = await fetch(url.toString(), { method: 'GET' });
-  if (!res.ok) throw new Error(`外部DBへの通信に失敗しました(${res.status})`);
-  return (await res.json()) as T;
+  return parseRemoteResponse<T>(res);
 }
 
 export async function remotePost<T>(action: string, body: Record<string, unknown> = {}): Promise<T> {
@@ -31,6 +49,5 @@ export async function remotePost<T>(action: string, body: Record<string, unknown
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ action, token: apiToken ?? undefined, ...body }),
   });
-  if (!res.ok) throw new Error(`外部DBへの通信に失敗しました(${res.status})`);
-  return (await res.json()) as T;
+  return parseRemoteResponse<T>(res);
 }
