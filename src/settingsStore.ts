@@ -14,7 +14,7 @@ export interface Settings {
   okuriganaRatio: number;
   /**
    * テスト生成の出題元として使うデータセットIDの一覧。
-   * 空配列は「まだ選択されていない」を意味し、呼び出し側(app.html)が
+   * 空配列は「まだ選択されていない」を意味し、呼び出し側(index.html)が
    * 初回だけ既知の全データセットIDで初期化して保存する(挙動を後方互換に保つため)。
    */
   sourceDatasetIds: string[];

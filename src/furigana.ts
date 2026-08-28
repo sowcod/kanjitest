@@ -41,7 +41,7 @@ function getTokenizer(): Promise<Tokenizer> {
   return tokenizerPromise;
 }
 
-/** kuromoji tokenizer をバックグラウンドで初期化する。app.html読み込み時に呼んでおく。 */
+/** kuromoji tokenizer をバックグラウンドで初期化する。index.html読み込み時に呼んでおく。 */
 export function initFurigana(): Promise<void> {
   return getTokenizer().then(() => undefined);
 }
