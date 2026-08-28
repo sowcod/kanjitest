@@ -1165,25 +1165,47 @@
   }
 
   async function saveCurrent() {
+    if (qSaveBtn.disabled) return;
     const text = qEditor.value.trim();
     if (!text) return;
-    const datasetId = qDatasetSelect.value;
-    const dup = await findDuplicate(text, datasetId, editingId);
-    if (dup && !confirm('同じ内容の問題が既に登録されています。それでも保存しますか？')) return;
-    const saved = await saveQuestion({ id: editingId ?? undefined, text, weight: currentWeight(), datasetId });
-    editingId = saved.id;
-    qDeleteBtn.disabled = false;
-    await refreshQuestionList();
-    selectedIndex = questions.findIndex(q => q.id === saved.id);
-    highlightSelected();
+    qSaveBtn.disabled = true;
+    const originalText = qSaveBtn.textContent;
+    qSaveBtn.textContent = '保存中…';
+    try {
+      const datasetId = qDatasetSelect.value;
+      const dup = await findDuplicate(text, datasetId, editingId);
+      if (dup && !confirm('同じ内容の問題が既に登録されています。それでも保存しますか？')) return;
+      const saved = await saveQuestion({ id: editingId ?? undefined, text, weight: currentWeight(), datasetId });
+      editingId = saved.id;
+      qDeleteBtn.disabled = false;
+      await refreshQuestionList();
+      selectedIndex = questions.findIndex(q => q.id === saved.id);
+      highlightSelected();
+    } catch (e) {
+      alert('問題の保存に失敗しました: ' + e);
+    } finally {
+      qSaveBtn.disabled = false;
+      qSaveBtn.textContent = originalText;
+    }
   }
 
   async function deleteCurrent() {
+    if (qDeleteBtn.disabled) return;
     if (!editingId) return;
     if (!confirm('この問題を削除しますか？')) return;
-    await deleteQuestion(editingId);
-    startNew();
-    await refreshQuestionList();
+    qDeleteBtn.disabled = true;
+    const originalText = qDeleteBtn.textContent;
+    qDeleteBtn.textContent = '削除中…';
+    try {
+      await deleteQuestion(editingId);
+      startNew();
+      await refreshQuestionList();
+    } catch (e) {
+      alert('問題の削除に失敗しました: ' + e);
+    } finally {
+      qDeleteBtn.textContent = originalText;
+      qDeleteBtn.disabled = !editingId;
+    }
   }
 
   qEditor.addEventListener('input', drawQuestionPreview);
@@ -1342,54 +1364,88 @@
   });
 
   qDatasetNewBtn.addEventListener('click', async () => {
+    if (qDatasetNewBtn.disabled) return;
     const name = prompt('新しいデータセット名を入力してください');
     if (!name || !name.trim()) return;
-    const created = await saveDataset({ name: name.trim() });
-    await refreshDatasets();
-    renderDatasetControls();
-    qDatasetFilter.value = created.id;
-    const settings = loadSettings();
-    if (settings.sourceDatasetIds.length > 0) {
-      saveSettings({ ...settings, sourceDatasetIds: [...settings.sourceDatasetIds, created.id] });
+    qDatasetNewBtn.disabled = true;
+    const originalText = qDatasetNewBtn.textContent;
+    qDatasetNewBtn.textContent = '作成中…';
+    try {
+      const created = await saveDataset({ name: name.trim() });
+      await refreshDatasets();
+      renderDatasetControls();
+      qDatasetFilter.value = created.id;
+      const settings = loadSettings();
+      if (settings.sourceDatasetIds.length > 0) {
+        saveSettings({ ...settings, sourceDatasetIds: [...settings.sourceDatasetIds, created.id] });
+      }
+      await refreshQuestionList();
+      renderDatasetFilterCheckboxes();
+    } catch (e) {
+      alert('データセットの作成に失敗しました: ' + e);
+    } finally {
+      qDatasetNewBtn.disabled = false;
+      qDatasetNewBtn.textContent = originalText;
     }
-    await refreshQuestionList();
-    renderDatasetFilterCheckboxes();
   });
 
   qDatasetRenameBtn.addEventListener('click', async () => {
+    if (qDatasetRenameBtn.disabled) return;
     const id = qDatasetFilter.value;
     if (id === '__all__') { alert('名前を変更するデータセットを選んでください。'); return; }
     const current = datasets.find(d => d.id === id);
     const name = prompt('新しいデータセット名を入力してください', current?.name ?? '');
     if (!name || !name.trim()) return;
-    await saveDataset({ id, name: name.trim() });
-    await refreshDatasets();
-    renderDatasetControls();
-    qDatasetFilter.value = id;
-    renderDatasetFilterCheckboxes();
+    qDatasetRenameBtn.disabled = true;
+    const originalText = qDatasetRenameBtn.textContent;
+    qDatasetRenameBtn.textContent = '変更中…';
+    try {
+      await saveDataset({ id, name: name.trim() });
+      await refreshDatasets();
+      renderDatasetControls();
+      qDatasetFilter.value = id;
+      renderDatasetFilterCheckboxes();
+    } catch (e) {
+      alert('データセットの名前変更に失敗しました: ' + e);
+    } finally {
+      qDatasetRenameBtn.disabled = false;
+      qDatasetRenameBtn.textContent = originalText;
+    }
   });
 
   qDatasetDeleteBtn.addEventListener('click', async () => {
+    if (qDatasetDeleteBtn.disabled) return;
     const id = qDatasetFilter.value;
     if (id === '__all__') { alert('削除するデータセットを選んでください。'); return; }
     if (datasets.length <= 1) { alert('最後のデータセットは削除できません。'); return; }
-    const inUse = await listQuestions({ datasetIds: [id] });
-    if (inUse.length > 0) {
-      alert(`このデータセットには問題が${inUse.length}件残っているため削除できません。先に問題を別のデータセットへ移すか削除してください。`);
-      return;
+    qDatasetDeleteBtn.disabled = true;
+    const originalText = qDatasetDeleteBtn.textContent;
+    qDatasetDeleteBtn.textContent = '確認中…';
+    try {
+      const inUse = await listQuestions({ datasetIds: [id] });
+      if (inUse.length > 0) {
+        alert(`このデータセットには問題が${inUse.length}件残っているため削除できません。先に問題を別のデータセットへ移すか削除してください。`);
+        return;
+      }
+      const name = datasets.find(d => d.id === id)?.name ?? id;
+      if (!confirm(`データセット「${name}」を削除しますか？`)) return;
+      qDatasetDeleteBtn.textContent = '削除中…';
+      await deleteDataset(id);
+      await refreshDatasets();
+      renderDatasetControls();
+      qDatasetFilter.value = '__all__';
+      const settings = loadSettings();
+      if (settings.sourceDatasetIds.includes(id)) {
+        saveSettings({ ...settings, sourceDatasetIds: settings.sourceDatasetIds.filter(x => x !== id) });
+      }
+      await refreshQuestionList();
+      renderDatasetFilterCheckboxes();
+    } catch (e) {
+      alert('データセットの削除に失敗しました: ' + e);
+    } finally {
+      qDatasetDeleteBtn.disabled = false;
+      qDatasetDeleteBtn.textContent = originalText;
     }
-    const name = datasets.find(d => d.id === id)?.name ?? id;
-    if (!confirm(`データセット「${name}」を削除しますか？`)) return;
-    await deleteDataset(id);
-    await refreshDatasets();
-    renderDatasetControls();
-    qDatasetFilter.value = '__all__';
-    const settings = loadSettings();
-    if (settings.sourceDatasetIds.includes(id)) {
-      saveSettings({ ...settings, sourceDatasetIds: settings.sourceDatasetIds.filter(x => x !== id) });
-    }
-    await refreshQuestionList();
-    renderDatasetFilterCheckboxes();
   });
 
   renderDatasetControls();

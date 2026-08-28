@@ -134,6 +134,14 @@ function repo(): QuestionRepository {
 
 let cache: Question[] | null = null;
 
+// タブがバックグラウンドから復帰したら、他タブ/スプレッドシート直接編集などの
+// 取りこぼしに気付けるようキャッシュを破棄する(次回参照時に再取得される)。
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') cache = null;
+  });
+}
+
 async function loadAll(): Promise<Question[]> {
   if (cache === null) cache = await repo().list();
   return cache;
