@@ -1,10 +1,79 @@
 import { Question, targetKanji, bodyKanji, allKanji, questionKinds, questionGrade } from './questionStore.js';
-import { Grade } from './kanjiData.js';
+import { Grade, isKanji } from './kanjiData.js';
+import { tokenize } from './parser.js';
 import { Settings } from './settingsStore.js';
 
 export interface SelectionResult {
   selected: Question[];
   warnings: string[];
+}
+
+/**
+ * 書き問題に連なる「漢字[よみ]」を、既習済みの場合だけ書き問題へ昇格させる。
+ *
+ * 昇格対象は1字の通常ルビであり、ひらがな・句読点・ルビのない漢字などが間に入ると
+ * その地点で連鎖は止まる。元から <...>[...] である書き問題を起点として、
+ * 同じ連続列にある既習済み漢字をすべて昇格するため、前後どちらへの連鎖にも対応する。
+ */
+export function promoteAdjacentWriteKanji(text: string, learnedKanji: Set<string>): string {
+  const tokens = tokenize(text);
+  const promote = new Set<number>();
+
+  type Unit = { start: number; end: number; char: string; write: boolean };
+  const units: Unit[] = [];
+  for (let i = 0; i < tokens.length;) {
+    const token = tokens[i];
+    const next = tokens[i + 1];
+    if (
+      token.kind === 'ANGLE_GROUP' &&
+      [...token.value].length > 0 &&
+      [...token.value].every(isKanji) &&
+      next?.kind === 'RUBY1'
+    ) {
+      units.push({ start: i, end: i + 1, char: token.value, write: true });
+      i += 2;
+    } else if (
+      token.kind === 'CHAR' &&
+      isKanji(token.value) &&
+      next?.kind === 'RUBY1'
+    ) {
+      units.push({ start: i, end: i + 1, char: token.value, write: false });
+      i += 2;
+    } else {
+      // 非対象トークンを境にして連続列を切るための印として保持する。
+      units.push({ start: i, end: i, char: '', write: false });
+      i += 1;
+    }
+  }
+
+  for (let i = 0; i < units.length;) {
+    if (!units[i].char) { i++; continue; }
+    let end = i;
+    while (end < units.length && units[end].char) end++;
+
+    // 書き問題を起点に、既習済みの隣接漢字へだけ広げる。未習漢字は通り抜けない。
+    const reached = new Set<number>();
+    const queue: number[] = [];
+    for (let j = i; j < end; j++) {
+      if (units[j].write) {
+        reached.add(j);
+        queue.push(j);
+      }
+    }
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const next of [current - 1, current + 1]) {
+        if (next < i || next >= end || reached.has(next)) continue;
+        if (!units[next].write && !learnedKanji.has(units[next].char)) continue;
+        reached.add(next);
+        queue.push(next);
+        if (!units[next].write) promote.add(units[next].start);
+      }
+    }
+    i = end;
+  }
+
+  return tokens.map((token, i) => promote.has(i) ? `<${token.text}>` : token.text).join('');
 }
 
 function isSubset(sub: Set<string>, sup: Set<string>): boolean {

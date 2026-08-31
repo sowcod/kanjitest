@@ -788,6 +788,9 @@
       <label>送り仮名問題の割合:
         <input type="number" id="t-okurigana-ratio" min="0" max="1" step="0.1">
       </label>
+      <label title="書き問題に隣接する、既習済みでルビ付きの漢字も書き問題にします。ひらがなや句読点を挟むと連鎖しません。">
+        <input type="checkbox" id="t-promote-adjacent-write-kanji"> 隣接する既習漢字を昇格
+      </label>
       <label>直近何回分を重複判定に使うか:
         <input type="number" id="t-history-count" min="1" step="1">
       </label>
@@ -876,7 +879,7 @@
   import {
     recordTest, countRecentUses, loadHistory, formatTestLabel, deleteHistoryEntry,
   } from './dist/browser/testHistoryStore.js';
-  import { selectQuestions, assignColumns } from './dist/browser/testGenerator.js';
+  import { selectQuestions, assignColumns, promoteAdjacentWriteKanji } from './dist/browser/testGenerator.js';
   import { renderPageToCanvas, generateTestPdf, openPdfInNewTab } from './dist/browser/pdfExport.js';
   import { initFurigana, buildRuby, buildReadBox, buildWriteBox, buildBracketBox } from './dist/browser/furigana.js';
 
@@ -1520,6 +1523,7 @@
   const tReviewRatio = document.getElementById('t-review-ratio');
   const tReadRatio = document.getElementById('t-read-ratio');
   const tOkuriganaRatio = document.getElementById('t-okurigana-ratio');
+  const tPromoteAdjacentWriteKanji = document.getElementById('t-promote-adjacent-write-kanji');
   const tHistoryCount = document.getElementById('t-history-count');
   const tGenerateBtn = document.getElementById('t-generate-btn');
   const tClearBtn = document.getElementById('t-clear-btn');
@@ -1537,6 +1541,8 @@
   let currentColumns = null;
   // 選択中の問題(順序は選出時のまま保持。列割り付けはassignColumns側で高さバランスを取るため順序自体は結果に影響しない)
   let manualSelectionIds = new Set();
+  // ランダム生成時だけ適用する派生問題文。登録済みの問題データは変更しない。
+  let generatedQuestionOverrides = new Map();
   let tSelectSearchQuery = '';
 
   /** 出題元として有効なデータセットID一覧。未選択(空配列)なら既知の全データセットを対象とする */
@@ -1577,6 +1583,7 @@
     tReviewRatio.value = String(settings.reviewRatio);
     tReadRatio.value = String(settings.readRatio);
     tOkuriganaRatio.value = String(settings.okuriganaRatio);
+    tPromoteAdjacentWriteKanji.checked = settings.promoteAdjacentWriteKanji;
     tHistoryCount.value = String(settings.recentHistoryCount);
   }
 
@@ -1585,13 +1592,15 @@
     const reviewRatio = Math.min(1, Math.max(0, Number(tReviewRatio.value) || 0));
     const readRatio = Math.min(1, Math.max(0, Number(tReadRatio.value) || 0));
     const okuriganaRatio = Math.min(1, Math.max(0, Number(tOkuriganaRatio.value) || 0));
+    const promoteAdjacentWriteKanji = tPromoteAdjacentWriteKanji.checked;
     const recentHistoryCount = Math.max(1, Math.round(Number(tHistoryCount.value) || 1));
-    saveSettings({ ...settings, reviewRatio, readRatio, okuriganaRatio, recentHistoryCount });
+    saveSettings({ ...settings, reviewRatio, readRatio, okuriganaRatio, promoteAdjacentWriteKanji, recentHistoryCount });
   }
 
   tReviewRatio.addEventListener('change', persistTestSettings);
   tReadRatio.addEventListener('change', persistTestSettings);
   tOkuriganaRatio.addEventListener('change', persistTestSettings);
+  tPromoteAdjacentWriteKanji.addEventListener('change', persistTestSettings);
   tHistoryCount.addEventListener('change', persistTestSettings);
 
   function showWarnings(warnings) {
@@ -1627,7 +1636,10 @@
       return [];
     }
     const byId = new Map(all.map(q => [q.id, q]));
-    return [...manualSelectionIds].map(id => byId.get(id)).filter(Boolean);
+    return [...manualSelectionIds]
+      .map(id => byId.get(id))
+      .filter(Boolean)
+      .map(q => generatedQuestionOverrides.has(q.id) ? { ...q, text: generatedQuestionOverrides.get(q.id) } : q);
   }
 
   /** 選択中の問題一覧から列レイアウトを組み直し、プレビューを更新する */
@@ -1740,6 +1752,11 @@
     showWarnings(warnings);
 
     manualSelectionIds = new Set(selected.map(q => q.id));
+    generatedQuestionOverrides = new Map(
+      settings.promoteAdjacentWriteKanji
+        ? selected.map(q => [q.id, promoteAdjacentWriteKanji(q.text, learnedSet)])
+        : [],
+    );
     await renderSelectPane();
     await updatePreviewFromSelection();
   }
@@ -1773,6 +1790,7 @@
   tGenerateBtn.addEventListener('click', generate);
   tClearBtn.addEventListener('click', async () => {
     manualSelectionIds = new Set();
+    generatedQuestionOverrides = new Map();
     showWarnings([]);
     await renderSelectPane();
     await updatePreviewFromSelection();

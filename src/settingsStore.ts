@@ -12,6 +12,8 @@ export interface Settings {
   readRatio: number;
   /** 送り仮名問題の目標割合（0〜1）。既定 0。 */
   okuriganaRatio: number;
+  /** 書き問題に隣接する、既習済みでルビ付きの漢字も書き問題に昇格させる。 */
+  promoteAdjacentWriteKanji: boolean;
   /**
    * テスト生成の出題元として使うデータセットIDの一覧。
    * 空配列は「まだ選択されていない」を意味し、呼び出し側(index.html)が
@@ -29,6 +31,7 @@ const DEFAULT_SETTINGS: Settings = {
   slotsPerColumn: 2,
   readRatio: 0,
   okuriganaRatio: 0,
+  promoteAdjacentWriteKanji: false,
   sourceDatasetIds: [],
 };
 
