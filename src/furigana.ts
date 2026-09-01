@@ -27,12 +27,14 @@ interface Tokenizer {
   tokenize(text: string): KuromojiToken[];
 }
 
+const DEFAULT_DIC_PATH = './dist/browser/kuromoji-dict/';
+
 let tokenizerPromise: Promise<Tokenizer> | null = null;
 
-function getTokenizer(): Promise<Tokenizer> {
+function getTokenizer(dicPath: string = DEFAULT_DIC_PATH): Promise<Tokenizer> {
   if (!tokenizerPromise) {
     tokenizerPromise = new Promise((resolve, reject) => {
-      kuromoji.builder({ dicPath: './dist/browser/kuromoji-dict/' }).build((err: unknown, tokenizer: Tokenizer) => {
+      kuromoji.builder({ dicPath }).build((err: unknown, tokenizer: Tokenizer) => {
         if (err) reject(err);
         else resolve(tokenizer);
       });
@@ -41,9 +43,13 @@ function getTokenizer(): Promise<Tokenizer> {
   return tokenizerPromise;
 }
 
-/** kuromoji tokenizer をバックグラウンドで初期化する。index.html読み込み時に呼んでおく。 */
-export function initFurigana(): Promise<void> {
-  return getTokenizer().then(() => undefined);
+/**
+ * kuromoji tokenizer をバックグラウンドで初期化する。index.html読み込み時に呼んでおく。
+ * `dicPath` を省略すると旧ブラウザビルド（`dist/browser/kuromoji-dict/`）を指す。
+ * Vite側は辞書の配置先（`public/kuromoji-dict/`）を明示して渡す。
+ */
+export function initFurigana(dicPath?: string): Promise<void> {
+  return getTokenizer(dicPath).then(() => undefined);
 }
 
 async function tokenizeText(text: string): Promise<KuromojiToken[]> {

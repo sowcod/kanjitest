@@ -29,11 +29,14 @@ jobs:
         run: npm ci
       - name: Build browser bundle
         run: npm run build:browser
+      - name: Build React app
+        run: npm run build:react
       - name: Assemble site
         run: |
           mkdir -p _site/dist
           cp index.html _site/
           cp -r dist/browser _site/dist/browser
+          cp -r dist/react/. _site/
       - name: Setup Pages
         uses: actions/configure-pages@v6
       - name: Upload artifact

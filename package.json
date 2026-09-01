@@ -8,7 +8,12 @@
     "build:browser": "tsc -p tsconfig.browser.json && cp node_modules/pdf-lib/dist/pdf-lib.esm.min.js dist/browser/pdf-lib.esm.min.js && cp node_modules/kuromoji/build/kuromoji.js dist/browser/kuromoji.js && mkdir -p dist/browser/kuromoji-dict && cp node_modules/kuromoji/dict/*.gz dist/browser/kuromoji-dict/",
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "copy:kuromoji-public": "mkdir -p public/kuromoji-dict && cp node_modules/kuromoji/build/kuromoji.js public/kuromoji.js && cp node_modules/kuromoji/dict/*.gz public/kuromoji-dict/",
+    "predev:react": "npm run copy:kuromoji-public",
+    "dev:react": "vite",
+    "prebuild:react": "npm run copy:kuromoji-public && tsc -p tsconfig.app.json",
+    "build:react": "vite build",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -18,10 +23,18 @@
     "@napi-rs/canvas": "^1.0.7",
     "@pdf-lib/fontkit": "^1.1.1",
     "kuromoji": "^0.1.2",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "typescript": "^7.0.2"
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   }
 }
