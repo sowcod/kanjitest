@@ -1,0 +1,94 @@
+/* 旧UI(index.html)の .btn 系ボタンを移植したもの。見た目の同一性を保つため値は変更していない。 */
+.btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2328;
+  cursor: pointer;
+}
+.btn:hover {
+  background: #f3f4f6;
+}
+.btn:disabled {
+  color: #9ca3af;
+  cursor: default;
+  background: #f3f4f6;
+}
+.btn-primary {
+  background: #3b82d4;
+  border-color: #3b82d4;
+  color: #fff;
+}
+.btn-primary:hover {
+  background: #2f6cb3;
+}
+.btn-danger {
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+.btn-danger:hover {
+  background: #fef2f2;
+}
+
+/* ── Notice(通知バー): 旧UIの #q-error-bar 相当を汎用化したもの ── */
+.notice {
+  font-size: 12px;
+  border-radius: 4px;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.notice-error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+}
+.notice-warning {
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+.notice-message {
+  flex: 1 1 auto;
+}
+
+/* ── Dialog(確認モーダル): 旧UIの alert/confirm 置き換え ── */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.dialog-box {
+  background: #fff;
+  border-radius: 6px;
+  padding: 20px;
+  min-width: 280px;
+  max-width: 420px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dialog-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2328;
+}
+.dialog-message {
+  font-size: 13px;
+  color: #374151;
+  white-space: pre-wrap;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
+import { AppTabs } from './components/AppTabs';
 import { QuestionManagementStub } from './features/questions/QuestionManagementStub';
 
 const KanjiRangeStub = lazy(() => import('./features/kanji/KanjiRangeStub').then((m) => ({ default: m.KanjiRangeStub })));
@@ -24,21 +25,19 @@ export function App() {
   const [activeTab, setActiveTab] = useState<TabId>('questions');
 
   return (
-    <div>
-      <nav>
-        {TABS.map((tab) => (
-          <button key={tab.id} type="button" aria-current={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-      <Suspense fallback={<p>読み込み中...</p>}>
-        {activeTab === 'questions' && <QuestionManagementStub />}
-        {activeTab === 'kanji' && <KanjiRangeStub />}
-        {activeTab === 'test' && <TestGenerationStub />}
-        {activeTab === 'history' && <HistoryStub />}
-        {activeTab === 'remote' && <RemoteConfigStub />}
-      </Suspense>
-    </div>
+    <>
+      <AppTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
+      <div className="app-tab-content">
+        <Suspense fallback={<p>読み込み中...</p>}>
+          <div className="app-tab-panel active">
+            {activeTab === 'questions' && <QuestionManagementStub />}
+            {activeTab === 'kanji' && <KanjiRangeStub />}
+            {activeTab === 'test' && <TestGenerationStub />}
+            {activeTab === 'history' && <HistoryStub />}
+            {activeTab === 'remote' && <RemoteConfigStub />}
+          </div>
+        </Suspense>
+      </div>
+    </>
   );
 }

@@ -1,0 +1,36 @@
+/* 旧UI(index.html)の #tabs / .tab-panel を移植したもの。見た目の同一性を保つため値は変更していない。 */
+.app-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  background: #1f2937;
+  border-bottom: 1px solid #111827;
+}
+.app-tabs button {
+  flex: 0 0 auto;
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  color: #9ca3af;
+  font-size: 14px;
+  cursor: pointer;
+}
+.app-tabs button.active {
+  color: #fff;
+  background: #374151;
+  border-bottom: 2px solid #3b82d4;
+}
+
+.app-tab-content {
+  flex: 1 1 0;
+  overflow: hidden;
+  display: flex;
+}
+.app-tab-panel {
+  flex: 1 1 0;
+  display: none;
+  overflow: hidden;
+  min-width: 0;
+}
+.app-tab-panel.active {
+  display: flex;
+}

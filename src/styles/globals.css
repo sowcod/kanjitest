@@ -1,0 +1,22 @@
+/* 旧UI(index.html)のグローバルリセット/body設定を移植したもの。見た目の同一性を保つため値は変更していない。 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, 'Segoe UI', sans-serif;
+  background: #f3f4f6;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  color: #1f2328;
+}
+
+button {
+  font-family: inherit;
+}
