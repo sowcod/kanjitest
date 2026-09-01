@@ -24,6 +24,7 @@
     "src/settingsStore.ts",
     "src/testHistoryStore.ts",
     "src/testGenerator.ts",
+    "src/canvasRenderer.ts",
     "src/pdfExport.ts",
     "src/kanjiReadings.ts",
     "src/furigana.ts"

@@ -8,6 +8,10 @@ gas/.clasp.json
 # Build output
 dist/
 
+# Vite用に生成されるkuromoji静的アセット(コピー生成物)
+public/kuromoji.js
+public/kuromoji-dict/
+
 # Generated files
 output.pdf
 *.pdf
