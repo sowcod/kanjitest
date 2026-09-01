@@ -9,6 +9,14 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/vite-env.d.ts", "src/main.tsx", "src/App.tsx", "src/features/**/*", "src/lib/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/vite-env.d.ts",
+    "src/main.tsx",
+    "src/App.tsx",
+    "src/features/**/*",
+    "src/lib/**/*",
+    "src/components/**/*",
+    "src/hooks/**/*"
+  ],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/*.test.tsx", "src/test/**/*"]
 }
