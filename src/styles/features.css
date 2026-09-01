@@ -1,0 +1,214 @@
+/* 旧UI(index.html)の画面別CSSを移行フェーズごとに移植する。値は変更していない。 */
+
+/* ── 問題管理タブ (フェーズ2) ── */
+.q-list-pane {
+  flex: 0 0 280px;
+  border-right: 1px solid #d1d5db;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.q-list-header {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #6b7280;
+}
+.q-legend {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  padding: 4px 12px 6px;
+  font-size: 11px;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+}
+.q-legend-item { display: inline-flex; align-items: center; gap: 3px; }
+.q-legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.q-search-wrap {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.q-search-wrap input {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  outline: none;
+}
+.q-search-wrap input:focus { border-color: #3b82d4; }
+.q-dataset-bar {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.q-dataset-bar select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 6px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+}
+.q-dataset-bar .btn {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.q-list {
+  flex: 1 1 0;
+  overflow-y: auto;
+  list-style: none;
+  outline: none;
+  margin: 0;
+  padding: 0;
+}
+.q-list li {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.q-list li .q-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.q-char-writeBox {
+  background: #dbeafe;
+  color: #1e40af;
+  text-decoration: underline solid #1e40af 2px;
+  text-decoration-skip-ink: none;
+}
+.q-char-readBox {
+  background: #fef3c7;
+  color: #92400e;
+  text-decoration: underline dotted #92400e 2px;
+  text-decoration-skip-ink: none;
+}
+.q-char-bracketBox {
+  background: #ede9fe;
+  color: #6d28a9;
+  text-decoration: underline dashed #6d28a9 2px;
+  text-decoration-skip-ink: none;
+}
+.q-list li .badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.q-list li .badge.grade-badge {
+  color: #065f46;
+  background: #d1fae5;
+}
+.q-list li .badge.grade-badge.grade-unknown {
+  color: #9ca3af;
+  background: #f3f4f6;
+}
+.q-list li:hover { background: #f9fafb; }
+.q-list li.selected { background: #dbeafe; }
+.q-list:focus li.selected { background: #bfdbfe; outline: 1px solid #3b82d4; }
+.q-list .q-empty {
+  padding: 16px 12px;
+  color: #9ca3af;
+  font-size: 12px;
+  cursor: default;
+}
+
+.q-edit-pane {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  padding: 12px;
+  gap: 12px;
+}
+.q-edit-form {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 8px;
+}
+.q-edit-form label {
+  font-size: 11px;
+  color: #6b7280;
+}
+.q-editor {
+  width: 100%;
+  height: 90px;
+  resize: vertical;
+  font-family: "Menlo", "Monaco", "Consolas", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 6px 8px;
+  outline: none;
+  background: #fafafa;
+}
+.q-editor:focus { border-color: #3b82d4; background: #fff; }
+
+.q-form-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.q-form-row .spacer { flex: 1 1 auto; }
+.q-form-row select {
+  padding: 4px 6px;
+  font-size: 13px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+}
+
+.q-furigana-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.q-furigana-toolbar .btn { padding: 6px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 7px; }
+.q-furigana-toolbar .ficon { width: 30px; height: 30px; flex-shrink: 0; }
+.q-furigana-status { font-size: 11px; color: #9ca3af; }
+
+.q-preview-wrap {
+  flex: 0 0 240px;
+  overflow: auto;
+  background: #e5e7eb;
+  border-radius: 4px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12px;
+}
+.q-preview {
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.12);
+}
