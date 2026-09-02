@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { AppTabs } from './components/AppTabs';
 import { QuestionManagementPage } from './features/questions/QuestionManagementPage';
 
-const KanjiRangeStub = lazy(() => import('./features/kanji/KanjiRangeStub').then((m) => ({ default: m.KanjiRangeStub })));
+const KanjiRangePage = lazy(() => import('./features/kanji/KanjiRangePage').then((m) => ({ default: m.KanjiRangePage })));
 const TestGenerationStub = lazy(() =>
   import('./features/tests/TestGenerationStub').then((m) => ({ default: m.TestGenerationStub })),
 );
@@ -31,7 +31,7 @@ export function App() {
         <Suspense fallback={<p>読み込み中...</p>}>
           <div className="app-tab-panel active">
             {activeTab === 'questions' && <QuestionManagementPage />}
-            {activeTab === 'kanji' && <KanjiRangeStub />}
+            {activeTab === 'kanji' && <KanjiRangePage />}
             {activeTab === 'test' && <TestGenerationStub />}
             {activeTab === 'history' && <HistoryStub />}
             {activeTab === 'remote' && <RemoteConfigStub />}
