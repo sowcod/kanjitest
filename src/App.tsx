@@ -3,8 +3,8 @@ import { AppTabs } from './components/AppTabs';
 import { QuestionManagementPage } from './features/questions/QuestionManagementPage';
 
 const KanjiRangePage = lazy(() => import('./features/kanji/KanjiRangePage').then((m) => ({ default: m.KanjiRangePage })));
-const TestGenerationStub = lazy(() =>
-  import('./features/tests/TestGenerationStub').then((m) => ({ default: m.TestGenerationStub })),
+const TestGenerationPage = lazy(() =>
+  import('./features/tests/TestGenerationPage').then((m) => ({ default: m.TestGenerationPage })),
 );
 const HistoryStub = lazy(() => import('./features/history/HistoryStub').then((m) => ({ default: m.HistoryStub })));
 const RemoteConfigStub = lazy(() =>
@@ -32,7 +32,7 @@ export function App() {
           <div className="app-tab-panel active">
             {activeTab === 'questions' && <QuestionManagementPage />}
             {activeTab === 'kanji' && <KanjiRangePage />}
-            {activeTab === 'test' && <TestGenerationStub />}
+            {activeTab === 'test' && <TestGenerationPage />}
             {activeTab === 'history' && <HistoryStub />}
             {activeTab === 'remote' && <RemoteConfigStub />}
           </div>
