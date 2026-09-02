@@ -6,9 +6,9 @@ const KanjiRangePage = lazy(() => import('./features/kanji/KanjiRangePage').then
 const TestGenerationPage = lazy(() =>
   import('./features/tests/TestGenerationPage').then((m) => ({ default: m.TestGenerationPage })),
 );
-const HistoryStub = lazy(() => import('./features/history/HistoryStub').then((m) => ({ default: m.HistoryStub })));
-const RemoteConfigStub = lazy(() =>
-  import('./features/remote/RemoteConfigStub').then((m) => ({ default: m.RemoteConfigStub })),
+const HistoryPage = lazy(() => import('./features/history/HistoryPage').then((m) => ({ default: m.HistoryPage })));
+const RemoteConfigPage = lazy(() =>
+  import('./features/remote/RemoteConfigPage').then((m) => ({ default: m.RemoteConfigPage })),
 );
 
 type TabId = 'questions' | 'kanji' | 'test' | 'history' | 'remote';
@@ -33,8 +33,8 @@ export function App() {
             {activeTab === 'questions' && <QuestionManagementPage />}
             {activeTab === 'kanji' && <KanjiRangePage />}
             {activeTab === 'test' && <TestGenerationPage />}
-            {activeTab === 'history' && <HistoryStub />}
-            {activeTab === 'remote' && <RemoteConfigStub />}
+            {activeTab === 'history' && <HistoryPage />}
+            {activeTab === 'remote' && <RemoteConfigPage />}
           </div>
         </Suspense>
       </div>
