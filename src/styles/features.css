@@ -284,3 +284,129 @@
   color: #d1d5db;
   cursor: default;
 }
+
+/* ── テスト生成・印刷タブ (フェーズ4) ── */
+.t-panel {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  padding: 16px;
+  gap: 16px;
+  overflow: hidden;
+}
+.t-controls {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  font-size: 13px;
+  overflow-y: auto;
+}
+.t-controls label { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.t-controls input[type="number"] {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.t-select-pane {
+  flex: 0 0 280px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+.t-select-header {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 12px;
+  color: #6b7280;
+}
+.t-dataset-filter {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.t-dataset-filter .t-dataset-filter-title {
+  font-size: 11px;
+  color: #6b7280;
+}
+.t-dataset-filter label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+.t-select-list {
+  flex: 1 1 0;
+  overflow-y: auto;
+  list-style: none;
+  outline: none;
+  margin: 0;
+  padding: 0;
+}
+.t-select-list li {
+  padding: 6px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.t-select-list li .t-select-check {
+  flex: 0 0 14px;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.t-select-list li .q-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t-select-list li:hover { background: #f9fafb; }
+.t-select-list li.selected { background: #dbeafe; }
+.t-select-list .q-empty {
+  padding: 16px 12px;
+  color: #9ca3af;
+  font-size: 12px;
+  cursor: default;
+}
+.t-main {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+.t-preview-wrap {
+  flex: 1 1 0;
+  overflow: auto;
+  background: #e5e7eb;
+  border-radius: 4px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+}
+.t-preview {
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.12);
+}
+.t-empty {
+  color: #9ca3af;
+  font-size: 13px;
+  padding: 32px;
+}
