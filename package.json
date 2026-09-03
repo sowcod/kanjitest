@@ -5,7 +5,6 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "build:browser": "tsc -p tsconfig.browser.json && cp node_modules/pdf-lib/dist/pdf-lib.esm.min.js dist/browser/pdf-lib.esm.min.js && cp node_modules/kuromoji/build/kuromoji.js dist/browser/kuromoji.js && mkdir -p dist/browser/kuromoji-dict && cp node_modules/kuromoji/dict/*.gz dist/browser/kuromoji-dict/",
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
     "copy:kuromoji-public": "mkdir -p public/kuromoji-dict && cp node_modules/kuromoji/build/kuromoji.js public/kuromoji.js && cp node_modules/kuromoji/dict/*.gz public/kuromoji-dict/",
