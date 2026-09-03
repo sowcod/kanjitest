@@ -27,12 +27,13 @@ interface Tokenizer {
   tokenize(text: string): KuromojiToken[];
 }
 
-const DEFAULT_DIC_PATH = './dist/browser/kuromoji-dict/';
-
 let tokenizerPromise: Promise<Tokenizer> | null = null;
 
-function getTokenizer(dicPath: string = DEFAULT_DIC_PATH): Promise<Tokenizer> {
+function getTokenizer(dicPath?: string): Promise<Tokenizer> {
   if (!tokenizerPromise) {
+    if (!dicPath) {
+      throw new Error('initFurigana(dicPath) を先に呼び出してください。');
+    }
     tokenizerPromise = new Promise((resolve, reject) => {
       kuromoji.builder({ dicPath }).build((err: unknown, tokenizer: Tokenizer) => {
         if (err) reject(err);
@@ -44,11 +45,10 @@ function getTokenizer(dicPath: string = DEFAULT_DIC_PATH): Promise<Tokenizer> {
 }
 
 /**
- * kuromoji tokenizer をバックグラウンドで初期化する。index.html読み込み時に呼んでおく。
- * `dicPath` を省略すると旧ブラウザビルド（`dist/browser/kuromoji-dict/`）を指す。
- * Vite側は辞書の配置先（`public/kuromoji-dict/`）を明示して渡す。
+ * kuromoji tokenizer をバックグラウンドで初期化する。アプリ起動時に呼んでおく。
+ * `dicPath` には辞書の配置先（`public/kuromoji-dict/`）を明示して渡す。
  */
-export function initFurigana(dicPath?: string): Promise<void> {
+export function initFurigana(dicPath: string): Promise<void> {
   return getTokenizer(dicPath).then(() => undefined);
 }
 
