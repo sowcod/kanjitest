@@ -138,6 +138,41 @@
   font-size: 12px;
   cursor: default;
 }
+.q-list li .badge.status-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #1e40af;
+  background: #dbeafe;
+}
+.q-list li .badge.status-failed {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+}
+.q-list li .badge.status-pending .spinner {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid #93c5fd;
+  border-top-color: #1e40af;
+  animation: q-spin 0.7s linear infinite;
+}
+@keyframes q-spin {
+  to { transform: rotate(360deg); }
+}
+.q-list li.status-pending-delete {
+  opacity: 0.5;
+  cursor: default;
+}
+.q-list li.status-pending-delete .q-label {
+  text-decoration: line-through;
+}
+.q-list li.status-pending-delete:hover { background: none; }
+.q-list li.status-failed {
+  background: #fef2f2;
+}
+.q-list li.status-failed:hover { background: #fee2e2; }
 
 .q-edit-pane {
   flex: 1 1 0;
@@ -157,6 +192,28 @@
 .q-edit-form label {
   font-size: 11px;
   color: #6b7280;
+}
+.q-edit-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.q-mode-label {
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 3px;
+}
+.q-mode-label.q-mode-new {
+  color: #065f46;
+  background: #d1fae5;
+}
+.q-mode-label.q-mode-edit {
+  color: #1e40af;
+  background: #dbeafe;
+}
+.q-mode-hint {
+  color: #b91c1c;
 }
 .q-editor {
   width: 100%;

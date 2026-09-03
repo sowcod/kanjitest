@@ -7,9 +7,19 @@ import { PromptDialog } from '../../components/PromptDialog';
 import { QuestionLabel } from '../../components/QuestionLabel';
 import { DEFAULT_DATASET_ID, deleteDataset, saveDataset } from '../../datasetStore';
 import { useDatasets } from '../../hooks/useDatasets';
-import { useQuestions } from '../../hooks/useQuestions';
+import { useQuestionRows } from '../../hooks/useQuestions';
 import { isMac } from '../../lib/platform';
-import { deleteQuestion, findDuplicate, plainText, questionGrade, saveQuestion, type Question } from '../../questionStore';
+import {
+  createQuestionOptimistic,
+  deleteQuestionOptimistic,
+  findDuplicate,
+  plainText,
+  questionGrade,
+  updateQuestionOptimistic,
+  type Question,
+  type Row,
+  type SyncState,
+} from '../../questionStore';
 import { loadSettings, saveSettings } from '../../settingsStore';
 import '../../styles/features.css';
 
@@ -26,10 +36,21 @@ function matchesQuestionSearch(q: Question, query: string): boolean {
   return plainText(q.text).toLowerCase().includes(query);
 }
 
+/** 行の同期状態からリスト上のバッジ表示(ラベル・見出し用クラス)を決める。synced なら表示しない(平常時にノイズを増やさない)。 */
+function syncBadge(sync: SyncState): { label: string; className: string } | null {
+  if (sync.phase === 'synced') return null;
+  if (sync.phase === 'pending') {
+    const label = sync.op === 'create' ? '登録中' : sync.op === 'update' ? '更新中' : '削除中';
+    return { label, className: 'status-pending' };
+  }
+  const label = sync.op === 'create' ? '登録失敗' : sync.op === 'update' ? '更新失敗' : '削除失敗';
+  return { label, className: 'status-failed' };
+}
+
 /** 問題管理タブ本体。旧UI(index.html)の該当ロジック相当。 */
 export function QuestionManagementPage() {
   const datasetsRes = useDatasets();
-  const questionsRes = useQuestions();
+  const questionsRes = useQuestionRows();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -41,8 +62,6 @@ export function QuestionManagementPage() {
   const [editorError, setEditorError] = useState<string | null>(null);
   const [datasetError, setDatasetError] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [datasetBusy, setDatasetBusy] = useState<'new' | 'rename' | 'delete' | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>({ kind: 'none' });
@@ -52,12 +71,13 @@ export function QuestionManagementPage() {
   const duplicateTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const datasets = datasetsRes.data ?? [];
-  const allQuestions = questionsRes.data ?? [];
+  const allQuestions: Row[] = questionsRes.rows;
   const datasetFiltered = datasetFilterId === '__all__' ? allQuestions : allQuestions.filter((q) => q.datasetId === datasetFilterId);
   const trimmedQuery = deferredSearchQuery.trim().toLowerCase();
   const filteredQuestions = trimmedQuery ? datasetFiltered.filter((q) => matchesQuestionSearch(q, trimmedQuery)) : datasetFiltered;
   const countLabel = trimmedQuery ? `${filteredQuestions.length}/${datasetFiltered.length}` : String(datasetFiltered.length);
-  const highlightedIndex = highlightedId ? filteredQuestions.findIndex((q) => q.id === highlightedId) : -1;
+  const highlightedIndex = highlightedId ? filteredQuestions.findIndex((q) => q.clientId === highlightedId) : -1;
+  const editingRow = editingId ? allQuestions.find((q) => q.clientId === editingId) ?? null : null;
 
   // datasets が読み込まれた後、新規作成モードのままなら既定データセットを解決する。
   useEffect(() => {
@@ -69,7 +89,7 @@ export function QuestionManagementPage() {
   // 検索語が変わった時だけ、編集中の項目が絞り込み結果に残っていればハイライトを復元する
   // (データセットフィルタ変更時はこの復元を行わない。旧UIの非対称な挙動を保つ)。
   useEffect(() => {
-    if (editingId && filteredQuestions.some((q) => q.id === editingId)) {
+    if (editingId && filteredQuestions.some((q) => q.clientId === editingId)) {
       setHighlightedId(editingId);
     } else {
       setHighlightedId(null);
@@ -83,9 +103,9 @@ export function QuestionManagementPage() {
     el?.scrollIntoView({ block: 'nearest' });
   }, [highlightedId]);
 
-  async function checkDuplicate(checkText: string, checkDatasetId: string, excludeId: string | null) {
+  async function checkDuplicate(checkText: string, checkDatasetId: string, excludeClientId: string | null) {
     const trimmed = checkText.trim();
-    const dup = trimmed ? await findDuplicate(trimmed, checkDatasetId, excludeId ?? undefined) : null;
+    const dup = trimmed ? await findDuplicate(trimmed, checkDatasetId, excludeClientId ?? undefined) : null;
     setDuplicateWarning(!!dup);
   }
 
@@ -107,16 +127,16 @@ export function QuestionManagementPage() {
     textareaRef.current?.focus();
   }
 
-  function loadIntoEditor(q: Question) {
-    setEditingId(q.id);
-    setHighlightedId(q.id);
+  function loadIntoEditor(q: Row) {
+    setEditingId(q.clientId);
+    setHighlightedId(q.clientId);
     setText(q.text);
     if (textareaRef.current) textareaRef.current.value = q.text;
     setWeight(q.weight);
     const effectiveDatasetId = datasets.some((d) => d.id === q.datasetId) ? q.datasetId : datasetId;
     setDatasetId(effectiveDatasetId);
     clearTimeout(duplicateTimerRef.current);
-    void checkDuplicate(q.text, effectiveDatasetId, q.id);
+    void checkDuplicate(q.text, effectiveDatasetId, q.clientId);
     textareaRef.current?.focus();
   }
 
@@ -144,42 +164,29 @@ export function QuestionManagementPage() {
   }
 
   async function doSave(opts?: { skipDuplicateConfirm?: boolean }) {
-    if (saving) return;
     const trimmed = text.trim();
     if (!trimmed) return;
-    setSaving(true);
-    try {
-      if (!opts?.skipDuplicateConfirm) {
-        const dup = await findDuplicate(trimmed, datasetId, editingId ?? undefined);
-        if (dup) {
-          setModal({ kind: 'confirmSaveDuplicate' });
-          return;
-        }
+    if (!opts?.skipDuplicateConfirm) {
+      const dup = await findDuplicate(trimmed, datasetId, editingId ?? undefined);
+      if (dup) {
+        setModal({ kind: 'confirmSaveDuplicate' });
+        return;
       }
-      const saved = await saveQuestion({ id: editingId ?? undefined, text: trimmed, weight, datasetId });
-      setEditingId(saved.id);
-      setHighlightedId(saved.id);
-      setEditorError(null);
-      questionsRes.reload();
-    } catch (e) {
-      setEditorError(String(e));
-    } finally {
-      setSaving(false);
+    }
+    setEditorError(null);
+    if (editingId === null) {
+      // 新規登録: 即座にリストへ反映してすぐ次の入力を始める。DBへの登録はバックグラウンドで行う。
+      createQuestionOptimistic({ text: trimmed, weight, datasetId });
+      startNew();
+    } else {
+      // 変更登録: 即座にリストへ反映するが、エディタは同じ項目を編集中のまま留まる。
+      updateQuestionOptimistic(editingId, { text: trimmed, weight, datasetId });
     }
   }
 
-  async function doDelete(id: string) {
-    if (deleting) return;
-    setDeleting(true);
-    try {
-      await deleteQuestion(id);
-      startNew();
-      questionsRes.reload();
-    } catch (e) {
-      setEditorError(String(e));
-    } finally {
-      setDeleting(false);
-    }
+  function doDelete(clientId: string) {
+    deleteQuestionOptimistic(clientId);
+    startNew();
   }
 
   function handleListKeyDown(e: React.KeyboardEvent<HTMLUListElement>) {
@@ -187,17 +194,17 @@ export function QuestionManagementPage() {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       const idx = Math.min(filteredQuestions.length - 1, highlightedIndex + 1);
-      setHighlightedId(filteredQuestions[idx].id);
+      setHighlightedId(filteredQuestions[idx].clientId);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       const idx = Math.max(0, highlightedIndex - 1);
-      setHighlightedId(filteredQuestions[idx].id);
+      setHighlightedId(filteredQuestions[idx].clientId);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (highlightedIndex >= 0) loadIntoEditor(filteredQuestions[highlightedIndex]);
     } else if ((e.metaKey || e.ctrlKey) && e.key === 'Backspace') {
       e.preventDefault();
-      if (highlightedIndex >= 0) setModal({ kind: 'confirmDeleteQuestion', id: filteredQuestions[highlightedIndex].id });
+      if (highlightedIndex >= 0) setModal({ kind: 'confirmDeleteQuestion', id: filteredQuestions[highlightedIndex].clientId });
     }
   }
 
@@ -384,12 +391,25 @@ export function QuestionManagementPage() {
           ) : (
             filteredQuestions.map((q) => {
               const grade = questionGrade(q.text);
+              const badge = syncBadge(q.sync);
+              const isPendingDelete = q.sync.phase === 'pending' && q.sync.op === 'delete';
+              const isFailed = q.sync.phase === 'failed';
+              const liClassNames = [
+                q.clientId === highlightedId ? 'selected' : null,
+                isPendingDelete ? 'status-pending-delete' : null,
+                isFailed ? 'status-failed' : null,
+              ]
+                .filter(Boolean)
+                .join(' ');
               return (
                 <li
-                  key={q.id}
-                  data-id={q.id}
-                  className={q.id === highlightedId ? 'selected' : undefined}
-                  onClick={() => loadIntoEditor(q)}
+                  key={q.clientId}
+                  data-id={q.clientId}
+                  className={liClassNames || undefined}
+                  onClick={() => {
+                    if (isPendingDelete) return;
+                    loadIntoEditor(q);
+                  }}
                 >
                   <span className="q-label">
                     <QuestionLabel text={q.text} />
@@ -401,6 +421,12 @@ export function QuestionManagementPage() {
                     {grade ? `${grade}年` : '―'}
                   </span>
                   <span className="badge">{q.weight === 2 ? '長め' : '通常'}</span>
+                  {badge ? (
+                    <span className={`badge ${badge.className}`} title={q.sync.phase === 'failed' ? q.sync.error : undefined}>
+                      {badge.className === 'status-pending' ? <span className="spinner" aria-hidden="true" /> : null}
+                      {badge.label}
+                    </span>
+                  ) : null}
                 </li>
               );
             })
@@ -409,6 +435,14 @@ export function QuestionManagementPage() {
       </div>
       <div className="q-edit-pane">
         <div className="q-edit-form">
+          <div className="q-edit-mode">
+            <span className={`q-mode-label ${editingId === null ? 'q-mode-new' : 'q-mode-edit'}`}>
+              {editingId === null ? '新規登録' : '編集中'}
+            </span>
+            {editingRow && editingRow.sync.phase === 'failed' ? (
+              <span className="q-mode-hint">前回の同期に失敗しました。保存すると再試行します。</span>
+            ) : null}
+          </div>
           <label htmlFor="q-editor">記法テキスト(1問=1行)</label>
           <FuriganaToolbar textareaRef={textareaRef} onTextChange={handleFuriganaTextChange} onError={setEditorError} />
           <textarea
@@ -439,16 +473,16 @@ export function QuestionManagementPage() {
               <input type="radio" name="q-weight" checked={weight === 2} onChange={() => setWeight(2)} /> 長め(2問分・1列を単独で使う)
             </label>
             <span className="spacer" />
-            <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void doSave()}>
-              {saving ? '保存中…' : `保存 (${isMac ? '⌘Enter' : 'Ctrl+Enter'})`}
+            <button type="button" className="btn btn-primary" onClick={() => void doSave()}>
+              {editingId === null ? `登録 (${isMac ? '⌘Enter' : 'Ctrl+Enter'})` : `更新 (${isMac ? '⌘Enter' : 'Ctrl+Enter'})`}
             </button>
             <button
               type="button"
               className="btn btn-danger"
-              disabled={!editingId || deleting}
+              disabled={!editingId}
               onClick={() => editingId && setModal({ kind: 'confirmDeleteQuestion', id: editingId })}
             >
-              {deleting ? '削除中…' : `削除 (${isMac ? '⌘⌫' : 'Ctrl+⌫'})`}
+              削除 ({isMac ? '⌘⌫' : 'Ctrl+⌫'})
             </button>
           </div>
           {editorError ? <Notice message={editorError} /> : null}
@@ -475,7 +509,7 @@ export function QuestionManagementPage() {
         onConfirm={() => {
           if (modal.kind !== 'confirmDeleteQuestion') return;
           setModal({ kind: 'none' });
-          void doDelete(modal.id);
+          doDelete(modal.id);
         }}
         onCancel={() => setModal({ kind: 'none' })}
       />

@@ -126,41 +126,306 @@ function repo(): QuestionRepository {
   return resolveDataSourceMode() === 'remote' ? remoteRepo : localRepo;
 }
 
+function tempId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 // ────────────────────────────────────────────────────────────
-// キャッシュ: 問題一覧は入力中の重複チェックなど短時間に何度も参照されるため、
-// メモリ上に保持する(全件・未フィルタ)。保存/削除時はサーバー(またはローカル)への
-// 書き込み成功後にキャッシュを直接パッチし、再取得はしない。
+// 同期状態(クライアント専用。サーバーには送らない、Question型そのものには含まれない)。
+// 問題管理画面は「保存は即座にリストへ反映し、DBへの実書き込みは非同期で行う」方式のため、
+// 各行がバックグラウンド書き込みのどの段階にあるかをここで管理する。
 // ────────────────────────────────────────────────────────────
 
-let cache: Question[] | null = null;
+export type SyncOp = 'create' | 'update' | 'delete';
 
-// タブがバックグラウンドから復帰したら、他タブ/スプレッドシート直接編集などの
-// 取りこぼしに気付けるようキャッシュを破棄する(次回参照時に再取得される)。
-if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') cache = null;
+export type SyncState =
+  | { phase: 'synced' }
+  | { phase: 'pending'; op: SyncOp }
+  | { phase: 'failed'; op: SyncOp; error: string };
+
+/**
+ * 一覧・エディタが扱う1行。`clientId` は行の見た目上の同一性を表す不変のキー
+ * (React の key や editingId など画面側の識別に使う)。新規登録の直後は
+ * サーバーがまだ id を発行していないため `id`(仮ID)と`clientId`は同じ値になるが、
+ * バックグラウンドの作成が成功すると `id` はサーバー発行の実IDに置き換わる
+ * (`clientId` はその後も変わらない — 編集中のまま画面に留まれるようにするため)。
+ */
+export interface Row extends Question {
+  clientId: string;
+  /** サーバー上に存在することが確認済みか。false の間はこの行に対する保存はすべて「作成」として送る。 */
+  confirmed: boolean;
+  sync: SyncState;
+}
+
+function toSyncedRow(q: Question): Row {
+  return { ...q, clientId: q.id, confirmed: true, sync: { phase: 'synced' } };
+}
+
+/** Row から Question 部分だけを取り出す(clientId/confirmed/sync は同期状態管理の内部詳細のため、既存の素朴なAPIには漏らさない)。 */
+function toQuestion(row: Row): Question {
+  const { id, text, weight, datasetId, createdAt, updatedAt } = row;
+  return { id, text, weight, datasetId, createdAt, updatedAt };
+}
+
+// ────────────────────────────────────────────────────────────
+// ストア: 問題一覧はモジュールスコープの単一の状態として保持し、
+// useSyncExternalStore から購読できるようにする(タブ切り替えでコンポーネントが
+// unmount/remountされても pending/failed 状態を保持できる)。
+// ────────────────────────────────────────────────────────────
+
+let rows: Row[] | null = null;
+let loadError: string | null = null;
+let loadPromise: Promise<Row[]> | null = null;
+
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+export interface QuestionsSnapshot {
+  rows: Row[];
+  loading: boolean;
+  error: string | null;
+}
+
+const EMPTY_ROWS: Row[] = [];
+let cachedSnapshot: QuestionsSnapshot | null = null;
+
+function notify(): void {
+  cachedSnapshot = null;
+  for (const listener of listeners) listener();
+}
+
+function patchRows(updater: (current: Row[]) => Row[]): void {
+  rows = updater(rows ?? []);
+  notify();
+}
+
+function startLoad(): Promise<Row[]> {
+  const promise = repo().list().then(
+    (list) => {
+      loadPromise = null;
+      if (rows === null) rows = list.map(toSyncedRow);
+      loadError = null;
+      notify();
+      return rows;
+    },
+    (err: unknown) => {
+      loadPromise = null;
+      loadError = err instanceof Error ? err.message : String(err);
+      notify();
+      throw err;
+    },
+  );
+  loadPromise = promise;
+  return promise;
+}
+
+/** 未読込であれば読込を開始する(副作用を起こしても安全な場所、購読開始時に呼ぶ)。 */
+function ensureLoaded(): void {
+  if (rows !== null || loadPromise !== null) return;
+  startLoad().catch(() => {
+    // エラーは loadError/snapshot 経由で通知済み。ここでの unhandled rejection 化を防ぐだけ。
   });
 }
 
-async function loadAll(): Promise<Question[]> {
-  if (cache === null) cache = await repo().list();
-  return cache;
+async function loadAll(): Promise<Row[]> {
+  if (rows !== null) return rows;
+  return loadPromise ?? startLoad();
+}
+
+// タブがバックグラウンドから復帰したら、他タブ/スプレッドシート直接編集などの
+// 取りこぼしに気付けるようキャッシュを破棄する(次回参照時に再取得される)。
+// ただし pending/failed な行や未確定の行がある間は、破棄すると進行中の同期状態を
+// 画面から見失ってしまうため復帰時の破棄を見送る(次に安全なタイミングで破棄される)。
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || rows === null) return;
+    const hasUnsynced = rows.some((r) => r.sync.phase !== 'synced' || !r.confirmed);
+    if (hasUnsynced) return;
+    rows = null;
+    notify();
+  });
 }
 
 // ────────────────────────────────────────────────────────────
-// 公開API
+// React 用の購読API(useSyncExternalStore から使う)
 // ────────────────────────────────────────────────────────────
 
-/** 登録済み問題を一覧で返す（作成日時の降順）。datasetIds を渡すとそのデータセットのみに絞り込む。 */
+export function subscribeQuestions(listener: Listener): () => void {
+  listeners.add(listener);
+  ensureLoaded();
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function getQuestionsSnapshot(): QuestionsSnapshot {
+  if (!cachedSnapshot) {
+    cachedSnapshot = { rows: rows ?? EMPTY_ROWS, loading: rows === null, error: loadError };
+  }
+  return cachedSnapshot;
+}
+
+export function reloadQuestions(): void {
+  rows = null;
+  loadError = null;
+  notify();
+  ensureLoaded();
+}
+
+// ────────────────────────────────────────────────────────────
+// 同一行への競合操作のキューイング(§6): 行ごとに進行中の操作(inFlight)を1つだけ許し、
+// その間に来た次の操作は queuedIntent に上書き保存(最後の内容が勝つ)、完了後に実行する。
+// 実際に送る内容(text/weight/datasetId)は常にその時点の rows を読むため、
+// intent 自体は「保存」か「削除」かのマーカーで十分。
+// ────────────────────────────────────────────────────────────
+
+type Intent = 'save' | 'delete';
+const inFlight = new Set<string>();
+const queuedIntent = new Map<string, Intent>();
+
+function dispatch(clientId: string, intent: Intent): void {
+  if (inFlight.has(clientId)) {
+    queuedIntent.set(clientId, intent);
+    return;
+  }
+  void run(clientId, intent);
+}
+
+async function run(clientId: string, intent: Intent): Promise<void> {
+  inFlight.add(clientId);
+  if (intent === 'save') {
+    await runSave(clientId);
+  } else {
+    await runDelete(clientId);
+  }
+  inFlight.delete(clientId);
+  const next = queuedIntent.get(clientId);
+  if (next !== undefined) {
+    queuedIntent.delete(clientId);
+    void run(clientId, next);
+  }
+}
+
+async function runSave(clientId: string): Promise<void> {
+  const row = rows?.find((r) => r.clientId === clientId);
+  if (!row) return;
+  const isCreate = !row.confirmed;
+  try {
+    const saved = await repo().save({
+      id: isCreate ? undefined : row.id,
+      text: row.text,
+      weight: row.weight,
+      datasetId: row.datasetId,
+    });
+    const stillExists = rows?.some((r) => r.clientId === clientId);
+    if (!stillExists) return; // 保存中にローカルで削除済み(未確定行の削除)。サーバー側は孤立するが復元しない。
+    // text/weight/datasetId は現在の行(rows)の値を使う。送信中に別の編集がキューされていた場合、
+    // saved はその編集より前の内容を反映しているため、それで上書きすると編集内容を失ってしまう。
+    // 採用するのは saved.id(仮ID→実IDの差し替え)と saved.createdAt/updatedAt のみ。
+    patchRows((rs) =>
+      rs.map((r) =>
+        r.clientId === clientId
+          ? { ...r, id: saved.id, createdAt: saved.createdAt, updatedAt: saved.updatedAt, confirmed: true, sync: { phase: 'synced' } }
+          : r,
+      ),
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    patchRows((rs) =>
+      rs.map((r) => (r.clientId === clientId ? { ...r, sync: { phase: 'failed', op: isCreate ? 'create' : 'update', error: message } } : r)),
+    );
+  }
+}
+
+async function runDelete(clientId: string): Promise<void> {
+  const row = rows?.find((r) => r.clientId === clientId);
+  if (!row) return;
+  try {
+    await repo().remove(row.id);
+    patchRows((rs) => rs.filter((r) => r.clientId !== clientId));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    patchRows((rs) => rs.map((r) => (r.clientId === clientId ? { ...r, sync: { phase: 'failed', op: 'delete', error: message } } : r)));
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// 楽観的更新API(QuestionManagementPageから呼ぶ): いずれも同期的に呼べて即座に
+// rows を更新・通知し、実際のDB書き込みはバックグラウンドで行う。
+// ────────────────────────────────────────────────────────────
+
+/** 新規登録: 即座にリストへ反映し、clientId(仮ID)を返す。DBへの登録はバックグラウンドで行う。 */
+export function createQuestionOptimistic(input: { text: string; weight: 1 | 2; datasetId: string }): string {
+  const clientId = tempId();
+  const now = new Date().toISOString();
+  const row: Row = {
+    id: clientId,
+    text: input.text,
+    weight: input.weight,
+    datasetId: input.datasetId,
+    createdAt: now,
+    updatedAt: now,
+    clientId,
+    confirmed: false,
+    sync: { phase: 'pending', op: 'create' },
+  };
+  patchRows((rs) => [...rs, row]);
+  dispatch(clientId, 'save');
+  return clientId;
+}
+
+/**
+ * 変更登録: 即座に対象行の内容を更新する。対象行がまだサーバーに一度も
+ * 確定していない(confirmed=false、= 直前の新規登録がpending/failed中)場合は、
+ * バックグラウンドでは「作成」として送る(実質、新規登録のリトライ)。
+ */
+export function updateQuestionOptimistic(clientId: string, input: { text: string; weight: 1 | 2; datasetId: string }): void {
+  const now = new Date().toISOString();
+  patchRows((rs) =>
+    rs.map((r) => {
+      if (r.clientId !== clientId) return r;
+      const op: SyncOp = r.confirmed ? 'update' : 'create';
+      return { ...r, text: input.text, weight: input.weight, datasetId: input.datasetId, updatedAt: now, sync: { phase: 'pending', op } };
+    }),
+  );
+  dispatch(clientId, 'save');
+}
+
+/**
+ * 削除: 対象行がまだサーバーに一度も確定していない場合はネットワーク呼び出し無しで
+ * 即座にリストから取り除く。確定済みの行は pending:delete にしてバックグラウンドで削除する
+ * (失敗時は failed:delete のまま通常表示に戻り、クリックしての再編集・削除リトライが可能)。
+ */
+export function deleteQuestionOptimistic(clientId: string): void {
+  const row = rows?.find((r) => r.clientId === clientId);
+  if (!row) return;
+  if (!row.confirmed) {
+    patchRows((rs) => rs.filter((r) => r.clientId !== clientId));
+    return;
+  }
+  patchRows((rs) => rs.map((r) => (r.clientId === clientId ? { ...r, sync: { phase: 'pending', op: 'delete' } } : r)));
+  dispatch(clientId, 'delete');
+}
+
+// ────────────────────────────────────────────────────────────
+// 公開API(既存): 直接 await して結果を受け取る素朴な版。同期状態管理は行わない。
+// HistoryPage/TestGenerationPageなど読み取り専用の消費側や、テストから使う。
+// ────────────────────────────────────────────────────────────
+
+/** 登録済み問題を一覧で返す(作成日時の降順)。datasetIds を渡すとそのデータセットのみに絞り込む。 */
 export async function listQuestions(filter?: { datasetIds?: string[] }): Promise<Question[]> {
   const all = await loadAll();
   const filtered = filter?.datasetIds?.length ? all.filter(q => filter.datasetIds!.includes(q.datasetId)) : all;
-  return filtered.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return filtered
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(toQuestion);
 }
 
 export async function getQuestion(id: string): Promise<Question | null> {
   const all = await loadAll();
-  return all.find(q => q.id === id) ?? null;
+  const found = all.find(q => q.id === id);
+  return found ? toQuestion(found) : null;
 }
 
 /** 新規登録または更新する。id を渡さない場合は新規作成する。 */
@@ -171,42 +436,51 @@ export async function saveQuestion(input: {
   datasetId: string;
 }): Promise<Question> {
   const saved = await repo().save(input);
-  if (cache !== null) {
-    const idx = cache.findIndex(q => q.id === saved.id);
-    if (idx >= 0) cache[idx] = saved;
-    else cache.push(saved);
+  if (rows !== null) {
+    const idx = rows.findIndex(r => r.id === saved.id);
+    const nextRows = rows.slice();
+    if (idx >= 0) nextRows[idx] = toSyncedRow(saved);
+    else nextRows.push(toSyncedRow(saved));
+    rows = nextRows;
+    notify();
   }
   return saved;
 }
 
 export async function deleteQuestion(id: string): Promise<void> {
   await repo().remove(id);
-  if (cache !== null) cache = cache.filter(q => q.id !== id);
+  if (rows !== null) {
+    rows = rows.filter(r => r.id !== id);
+    notify();
+  }
 }
 
 /**
- * 同一データセット内で同一内容（記法テキスト完全一致）の既存問題を探す。
- * excludeId は編集中の自分自身を除外するため。データセットが異なれば「重複」とは扱わない
- * (漢字ワーク由来と試験問題由来で同じ文が使われることは想定内のため)。
+ * 同一データセット内で同一内容(記法テキスト完全一致)の既存問題を探す。
+ * excludeClientId は編集中の自分自身を除外するため(clientId は id がサーバー発行の
+ * 実IDに置き換わっても変わらないため、これで正しく自分自身を除外できる)。
+ * データセットが異なれば「重複」とは扱わない(漢字ワーク由来と試験問題由来で
+ * 同じ文が使われることは想定内のため)。
  */
-export async function findDuplicate(text: string, datasetId: string, excludeId?: string): Promise<Question | null> {
+export async function findDuplicate(text: string, datasetId: string, excludeClientId?: string): Promise<Question | null> {
   const target = text.trim();
   const all = await loadAll();
-  return all.find(q => q.datasetId === datasetId && q.id !== excludeId && q.text.trim() === target) ?? null;
+  const found = all.find(q => q.datasetId === datasetId && q.clientId !== excludeClientId && q.text.trim() === target);
+  return found ? toQuestion(found) : null;
 }
 
-/** 記法を解いた見た目の文字列（一覧表示用。読みは表示せず漢字がそのまま見える形になる） */
+/** 記法を解いた見た目の文字列(一覧表示用。読みは表示せず漢字がそのまま見える形になる) */
 export function plainText(text: string): string {
   const { segments } = parse(text);
   return segments.map(seg => seg.char).join('');
 }
 
 // ────────────────────────────────────────────────────────────
-// 漢字抽出ヘルパー（テスト自動生成の判定ロジックで使用）
+// 漢字抽出ヘルパー(テスト自動生成の判定ロジックで使用)
 // ────────────────────────────────────────────────────────────
 
 /**
- * 出題対象漢字: writeBox / bracketBox セグメントの char（テスト時に隠れる＝出題対象）のうち漢字のみ。
+ * 出題対象漢字: writeBox / bracketBox セグメントの char(テスト時に隠れる＝出題対象)のうち漢字のみ。
  */
 export function targetKanji(text: string): Set<string> {
   const { segments } = parse(text);
@@ -222,7 +496,7 @@ export function targetKanji(text: string): Set<string> {
 }
 
 /**
- * 文中漢字: normal / readBox セグメントの char（常に印刷される＝文脈上見える）のうち漢字のみ。
+ * 文中漢字: normal / readBox セグメントの char(常に印刷される＝文脈上見える)のうち漢字のみ。
  * readBox は漢字自体は常に印刷され、出題対象は「読み」であるためここに含める。
  */
 export function bodyKanji(text: string): Set<string> {
@@ -241,9 +515,9 @@ export function bodyKanji(text: string): Set<string> {
 export type QuestionKind = 'write' | 'read' | 'okurigana';
 
 /**
- * 問題テキストに含まれる出題種別（複数あれば複合問題）。
- * writeBox（書き取り枠）→ 'write'、readBox（読み取り枠）→ 'read'、
- * bracketBox（送り仮名付き書き取り枠）→ 'okurigana'。
+ * 問題テキストに含まれる出題種別(複数あれば複合問題)。
+ * writeBox(書き取り枠)→ 'write'、readBox(読み取り枠)→ 'read'、
+ * bracketBox(送り仮名付き書き取り枠)→ 'okurigana'。
  */
 export function questionKinds(text: string): QuestionKind[] {
   const { segments } = parse(text);
@@ -256,7 +530,7 @@ export function questionKinds(text: string): QuestionKind[] {
   return [...kinds];
 }
 
-/** 問題テキストに含まれるすべての漢字（出題対象＋文中）を返す。漢字範囲チェックに使用。 */
+/** 問題テキストに含まれるすべての漢字(出題対象＋文中)を返す。漢字範囲チェックに使用。 */
 export function allKanji(text: string): Set<string> {
   const result = targetKanji(text);
   for (const ch of bodyKanji(text)) result.add(ch);
@@ -264,8 +538,8 @@ export function allKanji(text: string): Set<string> {
 }
 
 /**
- * 「問われている」漢字（学年バランス判定に使用）:
- * writeBox / bracketBox の出題対象漢字 ＋ readBox の漢字（読みが出題対象の漢字）。
+ * 「問われている」漢字(学年バランス判定に使用):
+ * writeBox / bracketBox の出題対象漢字 ＋ readBox の漢字(読みが出題対象の漢字)。
  * normal セグメントの漢字はあくまで文脈上の登場に過ぎないためここには含めない。
  */
 export function testedKanji(text: string): Set<string> {
@@ -282,8 +556,8 @@ export function testedKanji(text: string): Set<string> {
 }
 
 /**
- * 問題の推定学年（一覧表示用）。出題対象漢字の最大学年、無ければ文中漢字の最大学年。
- * 学年配当漢字を一つも含まない問題は null（学年不明）。
+ * 問題の推定学年(一覧表示用)。出題対象漢字の最大学年、無ければ文中漢字の最大学年。
+ * 学年配当漢字を一つも含まない問題は null(学年不明)。
  */
 export function questionGrade(text: string): Grade | null {
   const testedGrades = [...testedKanji(text)].map(kanjiGrade).filter((g): g is Grade => g !== null);
