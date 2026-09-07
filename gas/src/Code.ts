@@ -20,6 +20,12 @@ function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.Content.TextO
       }
       case 'listDatasets':
         return okResponse({ datasets: listDatasetsData() });
+      case 'getLearnedKanji':
+        return okResponse({ learnedKanji: getLearnedKanjiData() });
+      case 'getSettings':
+        return okResponse({ settings: getSettingsData() });
+      case 'listTestHistory':
+        return okResponse({ history: listTestHistoryData() });
       default:
         return errResponse(`不明なactionです: ${action}`);
     }
@@ -55,6 +61,22 @@ function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.Tex
       }
       case 'deleteDataset': {
         removeDatasetData(String(body.id));
+        return okResponse({ ok: true });
+      }
+      case 'saveLearnedKanji': {
+        const learnedKanji = body.learnedKanji as { currentGrade: 1 | 2 | 3 | 4 | 5 | 6; learnedThisGrade: string[] };
+        return okResponse({ learnedKanji: saveLearnedKanjiData(learnedKanji) });
+      }
+      case 'saveSettings': {
+        const settings = body.settings as Settings;
+        return okResponse({ settings: saveSettingsData(settings) });
+      }
+      case 'saveTestHistoryEntry': {
+        const entry = body.entry as { date: string; questionIds: string[] };
+        return okResponse({ history: saveTestHistoryEntryData(entry) });
+      }
+      case 'deleteTestHistoryEntry': {
+        removeTestHistoryEntryData(String(body.date));
         return okResponse({ ok: true });
       }
       default:

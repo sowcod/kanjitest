@@ -18,3 +18,24 @@ interface Dataset {
   createdAt: string;
   updatedAt: string;
 }
+
+interface LearnedKanjiState {
+  currentGrade: 1 | 2 | 3 | 4 | 5 | 6;
+  learnedThisGrade: string[];
+}
+
+interface TestHistoryEntry {
+  date: string;
+  questionIds: string[];
+}
+
+interface Settings {
+  reviewRatio: number;
+  recentHistoryCount: number;
+  questionsPerTest: number;
+  slotsPerColumn: number;
+  readRatio: number;
+  okuriganaRatio: number;
+  promoteAdjacentWriteKanji: boolean;
+  sourceDatasetIds: string[];
+}
