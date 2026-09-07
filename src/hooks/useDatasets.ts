@@ -1,6 +1,14 @@
-import { listDatasets, type Dataset } from '../datasetStore';
-import { useAsyncResource, type AsyncResource } from './useAsyncResource';
+import { useSyncExternalStore } from 'react';
+import { getDatasetsSnapshot, reloadDatasets, subscribeDatasets, type Dataset } from '../datasetStore';
+import type { AsyncResource } from './useAsyncResource';
 
+/** questionStore と同様にモジュールスコープのキャッシュを購読する。タブ再訪時の再取得待ちが発生しない。 */
 export function useDatasets(): AsyncResource<Dataset[]> {
-  return useAsyncResource<Dataset[]>(listDatasets);
+  const snapshot = useSyncExternalStore(subscribeDatasets, getDatasetsSnapshot);
+  return {
+    data: snapshot.loading ? null : snapshot.datasets,
+    loading: snapshot.loading,
+    error: snapshot.error,
+    reload: reloadDatasets,
+  };
 }

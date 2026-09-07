@@ -229,7 +229,6 @@ export function QuestionManagementPage() {
     setDatasetBusy('new');
     try {
       const created = await saveDataset({ name });
-      datasetsRes.reload();
       setDatasetFilterId(created.id);
       const settings = loadSettings();
       if (settings.sourceDatasetIds.length > 0) {
@@ -256,7 +255,6 @@ export function QuestionManagementPage() {
     setDatasetBusy('rename');
     try {
       await saveDataset({ id, name });
-      datasetsRes.reload();
       setDatasetError(null);
     } catch (e) {
       setDatasetError(String(e));
@@ -290,7 +288,6 @@ export function QuestionManagementPage() {
     setDatasetBusy('delete');
     try {
       await deleteDataset(id);
-      datasetsRes.reload();
       setDatasetFilterId('__all__');
       const settings = loadSettings();
       if (settings.sourceDatasetIds.includes(id)) {
