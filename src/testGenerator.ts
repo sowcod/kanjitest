@@ -235,19 +235,29 @@ export interface ColumnLayout {
   columns: Question[][];
 }
 
+/** 列に配置できる問題の合計高さの目安(px)と、列内の問題間の行間(px) */
+export interface ColumnCapacity {
+  usableHeight: number;
+  rowGap: number;
+}
+
 /**
  * 選出済みの問題をA4レイアウトの列に割り当てる。
  *
- * weight が `slotsPerColumn` に等しい問題（既定: weight=2）は列を単独で占有する。
- * 残りの問題は高さを計測し、降順ソート後に最大×最小のペアを作ることで
- * 各列の合計高さの分散を最小化する（スワップペアリング）。
+ * weight が `slotsPerColumn` 以上の問題（既定: weight=2）は列を単独で占有する。
+ * 残りの問題は高さを計測し降順に並べ、列の残り高さ(`columnCapacity.usableHeight`、
+ * 行間 `rowGap` を含む)に収まる限り同じ列に詰め、収まらなくなった時点で次の列に移す
+ * （Next Fit Decreasing）。1列あたりの問題数を固定しないことで、短い問題は3つ以上、
+ * 長い問題は1つだけといった列が自然に生まれる。
  *
  * @param measureHeight - 問題テキスト1件の縦幅(px)を返す関数（Tategaki.measureText().height を渡す）
+ * @param columnCapacity - measureHeight と同じ基準（フォントサイズ）で計算した列の高さ予算
  */
 export function assignColumns(
   selected: Question[],
   measureHeight: (text: string) => number,
   slotsPerColumn: number,
+  columnCapacity: ColumnCapacity,
 ): ColumnLayout {
   const wide = selected.filter(q => q.weight >= slotsPerColumn);
   const narrow = selected.filter(q => q.weight < slotsPerColumn);
@@ -258,17 +268,22 @@ export function assignColumns(
     .map(q => ({ q, height: measureHeight(q.text) }))
     .sort((a, b) => b.height - a.height);
 
-  let lo = 0;
-  let hi = withHeight.length - 1;
-  while (lo < hi) {
-    columns.push([withHeight[lo].q, withHeight[hi].q]);
-    lo++;
-    hi--;
+  const { usableHeight, rowGap } = columnCapacity;
+  let column: Question[] = [];
+  let columnHeight = 0;
+
+  for (const { q, height } of withHeight) {
+    const addedHeight = column.length === 0 ? height : rowGap + height;
+    if (column.length > 0 && columnHeight + addedHeight > usableHeight) {
+      columns.push(column);
+      column = [];
+      columnHeight = height;
+    } else {
+      columnHeight += addedHeight;
+    }
+    column.push(q);
   }
-  if (lo === hi) {
-    // 奇数個余った場合の保険（slotsPerColumn=2 の通常運用では発生しない）
-    columns.push([withHeight[lo].q]);
-  }
+  if (column.length > 0) columns.push(column);
 
   return { columns };
 }

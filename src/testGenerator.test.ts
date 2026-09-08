@@ -170,40 +170,53 @@ describe('selectQuestions: insufficient candidates', () => {
 describe('assignColumns', () => {
   const measureHeight = (text: string) => Number(text);
 
-  it('gives a weight>=slotsPerColumn question its own column', () => {
+  it('gives a weight>=slotsPerColumn question its own column regardless of height', () => {
     const wide = mkQuestion('w', 'ignored-height', 2);
-    const { columns } = assignColumns([wide], measureHeight, 2);
+    const { columns } = assignColumns([wide], measureHeight, 2, { usableHeight: 1000, rowGap: 0 });
     expect(columns).toEqual([[wide]]);
   });
 
-  it('pairs narrow questions by max+min height (swap pairing) for an even count', () => {
-    const q100 = mkQuestion('a', '100');
-    const q80 = mkQuestion('b', '80');
-    const q60 = mkQuestion('c', '60');
-    const q40 = mkQuestion('d', '40');
-    const { columns } = assignColumns([q60, q100, q40, q80], measureHeight, 2);
+  it('packs as many narrow questions into a column as fit within usableHeight (next-fit decreasing)', () => {
+    const q50 = mkQuestion('a', '50');
+    const q40 = mkQuestion('b', '40');
+    const q30 = mkQuestion('c', '30');
+    const q20 = mkQuestion('d', '20');
+    // 降順: 50,40,30,20 -> 列1: 50+40=90(収まる、+30なら120で溢れる) 列2: 30+20=50
+    const { columns } = assignColumns([q30, q50, q20, q40], measureHeight, 2, { usableHeight: 100, rowGap: 0 });
     expect(columns).toEqual([
-      [q100, q40],
-      [q80, q60],
+      [q50, q40],
+      [q30, q20],
     ]);
   });
 
-  it('puts the leftover question alone in its own column for an odd count', () => {
-    const q30 = mkQuestion('a', '30');
+  it('accounts for rowGap when deciding whether a question still fits the current column', () => {
+    const q50 = mkQuestion('a', '50');
+    const q40 = mkQuestion('b', '40');
+    // 50 + rowGap(15) + 40 = 105 > usableHeight(100) なので同じ列に収まらない
+    const { columns } = assignColumns([q50, q40], measureHeight, 2, { usableHeight: 100, rowGap: 15 });
+    expect(columns).toEqual([[q50], [q40]]);
+  });
+
+  it('allows more than two narrow questions in a single column when they fit', () => {
+    const q10 = mkQuestion('a', '10');
     const q20 = mkQuestion('b', '20');
-    const q10 = mkQuestion('c', '10');
-    const { columns } = assignColumns([q30, q20, q10], measureHeight, 2);
-    expect(columns).toEqual([
-      [q30, q10],
-      [q20],
-    ]);
+    const q15 = mkQuestion('c', '15');
+    const { columns } = assignColumns([q10, q20, q15], measureHeight, 2, { usableHeight: 100, rowGap: 0 });
+    expect(columns).toEqual([[q20, q15, q10]]);
   });
 
-  it('places wide-question columns before narrow-pair columns', () => {
+  it('gives a narrow question taller than usableHeight its own column as a best effort', () => {
+    const tooTall = mkQuestion('a', '150');
+    const q10 = mkQuestion('b', '10');
+    const { columns } = assignColumns([tooTall, q10], measureHeight, 2, { usableHeight: 100, rowGap: 0 });
+    expect(columns).toEqual([[tooTall], [q10]]);
+  });
+
+  it('places wide-question columns before narrow columns', () => {
     const wide = mkQuestion('w', 'x', 2);
     const q10 = mkQuestion('a', '10');
     const q5 = mkQuestion('b', '5');
-    const { columns } = assignColumns([q10, wide, q5], measureHeight, 2);
+    const { columns } = assignColumns([q10, wide, q5], measureHeight, 2, { usableHeight: 100, rowGap: 0 });
     expect(columns[0]).toEqual([wide]);
     expect(columns[1]).toEqual([q10, q5]);
   });

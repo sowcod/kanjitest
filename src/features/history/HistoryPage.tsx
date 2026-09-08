@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Dialog } from '../../components/Dialog';
 import { Notice } from '../../components/Notice';
 import { useHistory } from '../../hooks/useHistory';
-import { renderPageToCanvas } from '../../canvasRenderer';
+import { estimateColumnCapacity, renderPageToCanvas } from '../../canvasRenderer';
 import { getQuestion, type Question } from '../../questionStore';
 import { loadSettings } from '../../settingsStore';
 import { deleteHistoryEntry, formatTestLabel, recordTest, type TestHistoryEntry } from '../../testHistoryStore';
@@ -13,6 +13,7 @@ import '../../styles/features.css';
 const DPR = 2;
 const FONT_NAME = '游教科書体';
 const A4_RATIO = 841.89 / 595.28;
+const MEASURE_FONT_SIZE = 32;
 
 type ModalState = { kind: 'none' } | { kind: 'confirmDelete'; date: string };
 
@@ -20,7 +21,7 @@ function measureColumnHeight(text: string): number {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) return 0;
-  const tategaki = new Tategaki(ctx, { font: `32px "${FONT_NAME}"`, lineHeight: 1.0 });
+  const tategaki = new Tategaki(ctx, { font: `${MEASURE_FONT_SIZE}px "${FONT_NAME}"`, lineHeight: 1.0 });
   return tategaki.measureText(text).height;
 }
 
@@ -57,7 +58,11 @@ export function HistoryPage() {
       }
       if (cancelled) return;
       setDetailWarnings(missingCount > 0 ? [`${missingCount}問は削除済みのため表示できません。`] : []);
-      setDetailColumns(found.length === 0 ? null : assignColumns(found, measureColumnHeight, loadSettings().slotsPerColumn).columns);
+      setDetailColumns(
+        found.length === 0
+          ? null
+          : assignColumns(found, measureColumnHeight, loadSettings().slotsPerColumn, estimateColumnCapacity(MEASURE_FONT_SIZE)).columns,
+      );
     })();
     return () => {
       cancelled = true;

@@ -12,6 +12,56 @@ export const A4_HEIGHT_PT = 841.89;
 const PAGE_WIDTH_PX = Math.round(A4_WIDTH_PT * DPI_SCALE);
 const PAGE_HEIGHT_PX = Math.round(A4_HEIGHT_PT * DPI_SCALE);
 const NUM_COLUMNS = 8;
+const BASE_FONT_SIZE_PT = 17; // scale=1(pageWidthPx = A4_WIDTH_PT)相当のフォントサイズ
+const CM_TO_PT = 72 / 2.54;
+
+interface ColumnMetrics {
+  /** 用紙の余白(px) */
+  margin: number;
+  /** 列の描画開始Y座標(px)。丸数字のascentぶん本文を下げた位置 */
+  startY: number;
+  /** 列内の問題間の行間(px) */
+  rowGap: number;
+}
+
+/**
+ * 指定フォントサイズにおける余白・列の描画開始Y・行間を計算する。
+ * renderPageToCanvas（実際の描画）と assignColumns の高さ予算計算（fontSize=32基準）が
+ * 同じ比率を共有するための共通処理。
+ */
+function computeColumnMetrics(fontSize: number): ColumnMetrics {
+  const scale = fontSize / BASE_FONT_SIZE_PT;
+  const margin = Math.round(CM_TO_PT * scale);
+  const rowGap = fontSize * 1.5;
+  const numberFontSize = Math.round(fontSize * 0.55);
+  const numberGap = Math.round(4 * scale);
+
+  // 丸数字は本文の上に(textBaseline: bottom で)重ねて描くため、その実際の高さ(ascent)
+  // ぶん本文の開始Yを下げないと、数字が上端の余白に食い込んでしまう。
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  let numberAscent = numberFontSize;
+  if (ctx) {
+    ctx.font = `${numberFontSize}px sans-serif`;
+    numberAscent = ctx.measureText('①').actualBoundingBoxAscent;
+  }
+  const startY = margin + numberGap + numberAscent;
+
+  return { margin, startY, rowGap };
+}
+
+/**
+ * 列に配置できる問題の合計高さの目安(px)と行間を、指定フォントサイズ基準で返す。
+ * measureText を測ったのと同じフォントサイズで呼ぶことで、実際の印刷レイアウト
+ * (renderPageToCanvas)と同じ比率の予算を、プレビュー計測用の座標系のまま得られる。
+ */
+export function estimateColumnCapacity(fontSize: number): { usableHeight: number; rowGap: number } {
+  const scale = fontSize / BASE_FONT_SIZE_PT;
+  const { margin, startY, rowGap } = computeColumnMetrics(fontSize);
+  const pageHeightPx = A4_HEIGHT_PT * scale;
+  const maxY = pageHeightPx - margin;
+  return { usableHeight: maxY - startY, rowGap };
+}
 
 /**
  * 問題番号を丸数字の文字列にする。
@@ -46,10 +96,8 @@ export function renderPageToCanvas(
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // 印刷時、上下左右いずれも1cm相当の余白を確保する。
-  const CM_TO_PT = 72 / 2.54;
-  const margin = Math.round(CM_TO_PT * scale);
-  const fontSize = Math.round(17 * scale);
-  const rowGap = fontSize * 1.5;
+  const fontSize = Math.round(BASE_FONT_SIZE_PT * scale);
+  const { margin, startY, rowGap } = computeColumnMetrics(fontSize);
   // これを超える問題は用紙の物理的な余白・印刷不可領域にはみ出してしまうため描画しない。
   const maxY = pageHeightPx - margin;
 
@@ -61,14 +109,6 @@ export function renderPageToCanvas(
 
   const numberFontSize = Math.round(fontSize * 0.55);
   const numberGap = Math.round(4 * scale);
-
-  // 丸数字は本文の上に(textBaseline: bottom で)重ねて描くため、その実際の高さ(ascent)
-  // ぶん本文の開始Yを下げないと、数字が上端の余白に食い込んでしまう。
-  ctx.save();
-  ctx.font = `${numberFontSize}px sans-serif`;
-  const numberAscent = ctx.measureText('①').actualBoundingBoxAscent;
-  ctx.restore();
-  const startY = margin + numberGap + numberAscent;
 
   // 列内容の実際のインク幅（ルビ・書き取り枠などを含む）を踏まえて、右端の列の中心Xを決める。
   // これにより内容によらず右端は margin ぴったりの余白に収まる。

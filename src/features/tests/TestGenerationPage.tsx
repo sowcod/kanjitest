@@ -8,11 +8,13 @@ import { computeLearnedKanjiSet, loadLearnedKanjiState } from '../../learnedKanj
 import { plainText, questionGrade, type Question } from '../../questionStore';
 import { countRecentUses, formatTestLabel, recordTest } from '../../testHistoryStore';
 import { assignColumns, promoteAdjacentWriteKanji, selectQuestions } from '../../testGenerator';
+import { estimateColumnCapacity } from '../../canvasRenderer';
 import { Tategaki } from '../../tategaki';
 import { TestPreview } from './TestPreview';
 import '../../styles/features.css';
 
 const FONT_NAME = '游教科書体';
+const MEASURE_FONT_SIZE = 32;
 
 function clamp01(n: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(n) ? n : 0));
@@ -76,9 +78,10 @@ export function TestGenerationPage() {
     const measureCanvas = document.createElement('canvas');
     const measureCtx = measureCanvas.getContext('2d');
     if (!measureCtx) return null;
-    const measureTategaki = new Tategaki(measureCtx, { font: `32px "${FONT_NAME}"`, lineHeight: 1.0 });
+    const measureTategaki = new Tategaki(measureCtx, { font: `${MEASURE_FONT_SIZE}px "${FONT_NAME}"`, lineHeight: 1.0 });
     const measureHeight = (text: string) => measureTategaki.measureText(text).height;
-    return assignColumns(selectedQuestions, measureHeight, settings.slotsPerColumn).columns;
+    const columnCapacity = estimateColumnCapacity(MEASURE_FONT_SIZE);
+    return assignColumns(selectedQuestions, measureHeight, settings.slotsPerColumn, columnCapacity).columns;
   }, [selectedQuestions, settings.slotsPerColumn]);
 
   function toggleDatasetFilter(id: string, checked: boolean) {

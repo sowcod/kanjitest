@@ -6,7 +6,7 @@ export interface Settings {
   recentHistoryCount: number;
   /** 1回のテストの問題数（weight単位の合計）。既定 10。 */
   questionsPerTest: number;
-  /** 1列あたりの問題数（weight単位の合計）。既定 2。 */
+  /** この値以上のweightを持つ問題は、列の高さに関わらず単独で1列を占有する。既定 2。 */
   slotsPerColumn: number;
   /** 読み問題の目標割合（0〜1）。既定 0（基本的に書き問題のみ出す運用に合わせる）。 */
   readRatio: number;
