@@ -385,6 +385,28 @@
   font-size: 12px;
   color: #6b7280;
 }
+.t-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+}
+.t-tab {
+  flex: 1 1 auto;
+  padding: 6px 8px;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+  color: #6b7280;
+  background: #f9fafb;
+  border: none;
+  border-bottom: 2px solid transparent;
+}
+.t-tab.active {
+  color: #1d4ed8;
+  border-bottom-color: #1d4ed8;
+  background: #fff;
+  font-weight: 600;
+}
 .t-dataset-filter {
   flex: 0 0 auto;
   padding: 8px 12px;
@@ -455,6 +477,97 @@
 .t-select-list li:hover { background: #f9fafb; }
 .t-select-list li.selected { background: #dbeafe; }
 .t-select-list .q-empty {
+  padding: 16px 12px;
+  color: #9ca3af;
+  font-size: 12px;
+  cursor: default;
+}
+.t-selected-list {
+  flex: 1 1 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.t-selected-list li {
+  padding: 6px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.t-selected-list li .t-order-index {
+  flex: 0 0 auto;
+  color: #9ca3af;
+  font-size: 11px;
+  width: 18px;
+}
+.t-selected-list li .q-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t-selected-list li .badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.t-selected-list li .badge.grade-badge {
+  color: #065f46;
+  background: #d1fae5;
+}
+.t-selected-list li .badge.grade-badge.grade-unknown {
+  color: #9ca3af;
+  background: #f3f4f6;
+}
+.t-selected-list li .badge.auto-badge {
+  color: #7c3aed;
+  background: #ede9fe;
+}
+.t-selected-list li .t-lock-btn {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid #7c3aed;
+  color: #7c3aed;
+  background: #fff;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.t-selected-list li .t-move-btns {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.t-selected-list li .t-move-btns button {
+  font-size: 9px;
+  line-height: 1;
+  padding: 0 3px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  cursor: pointer;
+}
+.t-selected-list li .t-move-btns button:disabled {
+  color: #d1d5db;
+  cursor: default;
+}
+.t-selected-list li .t-remove-btn {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: #b91c1c;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.t-selected-list .q-empty {
   padding: 16px 12px;
   color: #9ca3af;
   font-size: 12px;

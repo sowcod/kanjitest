@@ -36,6 +36,7 @@ export function TestGenerationPage() {
   const [lastAutoSelectedIds, setLastAutoSelectedIds] = useState<Set<string>>(new Set());
   const [warnings, setWarnings] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'browse' | 'selected'>('browse');
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
@@ -134,7 +135,10 @@ export function TestGenerationPage() {
     const recentUses = countRecentUses(currentSettings.recentHistoryCount);
 
     const byId = new Map(allQuestions.map((q) => [q.id, q]));
-    const preSelected = [...manualSelectionIds]
+    // 直前の自動生成で追加された分(lastAutoSelectedIds)は固定せず、次の抽選対象に含める。
+    // 人間が明示的に選んだもの(それ以外)だけを preSelected として固定する。
+    const fixedIds = new Set([...manualSelectionIds].filter((id) => !lastAutoSelectedIds.has(id)));
+    const preSelected = [...fixedIds]
       .map((id) => byId.get(id))
       .filter((q): q is Question => q !== undefined);
 
@@ -148,7 +152,7 @@ export function TestGenerationPage() {
     );
     setWarnings(nextWarnings);
     setManualSelectionIds(new Set(selected.map((q) => q.id)));
-    setLastAutoSelectedIds(new Set(selected.filter((q) => !manualSelectionIds.has(q.id)).map((q) => q.id)));
+    setLastAutoSelectedIds(new Set(selected.filter((q) => !fixedIds.has(q.id)).map((q) => q.id)));
     setGeneratedQuestionOverrides(
       new Map(
         currentSettings.promoteAdjacentWriteKanji
@@ -156,6 +160,26 @@ export function TestGenerationPage() {
           : [],
       ),
     );
+  }
+
+  function promoteToFixed(id: string) {
+    setLastAutoSelectedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  function moveSelected(id: string, dir: -1 | 1) {
+    setManualSelectionIds((prev) => {
+      const order = [...prev];
+      const idx = order.indexOf(id);
+      const swapIdx = idx + dir;
+      if (idx < 0 || swapIdx < 0 || swapIdx >= order.length) return prev;
+      [order[idx], order[swapIdx]] = [order[swapIdx], order[idx]];
+      return new Set(order);
+    });
   }
 
   function clearSelection() {
@@ -237,62 +261,125 @@ export function TestGenerationPage() {
         <div className="t-select-header">
           問題を選ぶ({selectedWeight}/{settings.questionsPerTest})
         </div>
-        <div className="t-dataset-filter">
-          <div className="t-dataset-filter-title">出題元データセット</div>
-          {datasets.map((d) => (
-            <label key={d.id}>
+        <div className="t-tabs">
+          <button type="button" className={`t-tab${activeTab === 'browse' ? ' active' : ''}`} onClick={() => setActiveTab('browse')}>
+            問題一覧
+          </button>
+          <button type="button" className={`t-tab${activeTab === 'selected' ? ' active' : ''}`} onClick={() => setActiveTab('selected')}>
+            選択中({selectedQuestions.length}件)
+          </button>
+        </div>
+        {activeTab === 'browse' ? (
+          <>
+            <div className="t-dataset-filter">
+              <div className="t-dataset-filter-title">出題元データセット</div>
+              {datasets.map((d) => (
+                <label key={d.id}>
+                  <input
+                    type="checkbox"
+                    checked={activeSourceSet.has(d.id)}
+                    onChange={(e) => toggleDatasetFilter(d.id, e.currentTarget.checked)}
+                  />
+                  {d.name}
+                </label>
+              ))}
+            </div>
+            <div className="q-search-wrap">
               <input
-                type="checkbox"
-                checked={activeSourceSet.has(d.id)}
-                onChange={(e) => toggleDatasetFilter(d.id, e.currentTarget.checked)}
+                type="search"
+                placeholder="文で検索して追加/外す"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.currentTarget.value)}
               />
-              {d.name}
-            </label>
-          ))}
-        </div>
-        <div className="q-search-wrap">
-          <input
-            type="search"
-            placeholder="文で検索して追加/外す"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.currentTarget.value)}
-          />
-        </div>
-        <ul className="t-select-list" tabIndex={0}>
-          {questionsRes.error ? (
-            <li className="q-empty">外部DBへの接続に失敗しました: {questionsRes.error}</li>
-          ) : filteredForSelect.length === 0 ? (
-            <li className="q-empty">
-              {allQuestions.length === 0
-                ? '問題がまだありません。「問題管理」タブで登録してください。'
-                : '検索条件に一致する問題がありません。'}
-            </li>
-          ) : (
-            filteredForSelect.map((q) => {
-              const included = manualSelectionIds.has(q.id);
-              const grade = questionGrade(q.text);
-              return (
-                <li key={q.id} className={included ? 'selected' : undefined} onClick={() => toggleSelect(q.id)}>
-                  <span className="t-select-check">{included ? '✓' : ''}</span>
-                  <span className="q-label">
-                    <QuestionLabel text={q.text} />
-                  </span>
-                  <span
-                    className={`badge grade-badge${grade ? '' : ' grade-unknown'}`}
-                    title={grade ? `${grade}年生で習う漢字を含む問題` : '学年配当漢字を含まないため学年を判定できません'}
-                  >
-                    {grade ? `${grade}年` : '―'}
-                  </span>
-                  {lastAutoSelectedIds.has(q.id) ? (
-                    <span className="badge auto-badge" title="直前のランダム生成で自動追加された問題">
-                      自動
-                    </span>
-                  ) : null}
+            </div>
+            <ul className="t-select-list" tabIndex={0}>
+              {questionsRes.error ? (
+                <li className="q-empty">外部DBへの接続に失敗しました: {questionsRes.error}</li>
+              ) : filteredForSelect.length === 0 ? (
+                <li className="q-empty">
+                  {allQuestions.length === 0
+                    ? '問題がまだありません。「問題管理」タブで登録してください。'
+                    : '検索条件に一致する問題がありません。'}
                 </li>
-              );
-            })
-          )}
-        </ul>
+              ) : (
+                filteredForSelect.map((q) => {
+                  const included = manualSelectionIds.has(q.id);
+                  const grade = questionGrade(q.text);
+                  return (
+                    <li key={q.id} className={included ? 'selected' : undefined} onClick={() => toggleSelect(q.id)}>
+                      <span className="t-select-check">{included ? '✓' : ''}</span>
+                      <span className="q-label">
+                        <QuestionLabel text={q.text} />
+                      </span>
+                      <span
+                        className={`badge grade-badge${grade ? '' : ' grade-unknown'}`}
+                        title={grade ? `${grade}年生で習う漢字を含む問題` : '学年配当漢字を含まないため学年を判定できません'}
+                      >
+                        {grade ? `${grade}年` : '―'}
+                      </span>
+                      {lastAutoSelectedIds.has(q.id) ? (
+                        <span className="badge auto-badge" title="直前のランダム生成で自動追加された問題">
+                          自動
+                        </span>
+                      ) : null}
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </>
+        ) : (
+          <ul className="t-selected-list">
+            {selectedQuestions.length === 0 ? (
+              <li className="q-empty">まだ問題が選択されていません。「問題一覧」タブから追加するか、ランダム生成してください。</li>
+            ) : (
+              selectedQuestions.map((q, index) => {
+                const grade = questionGrade(q.text);
+                const isAuto = lastAutoSelectedIds.has(q.id);
+                return (
+                  <li key={q.id}>
+                    <span className="t-order-index">{index + 1}.</span>
+                    <span className="q-label">
+                      <QuestionLabel text={q.text} />
+                    </span>
+                    <span
+                      className={`badge grade-badge${grade ? '' : ' grade-unknown'}`}
+                      title={grade ? `${grade}年生で習う漢字を含む問題` : '学年配当漢字を含まないため学年を判定できません'}
+                    >
+                      {grade ? `${grade}年` : '―'}
+                    </span>
+                    {isAuto ? (
+                      <>
+                        <span className="badge auto-badge" title="直前のランダム生成で自動追加された問題">
+                          自動
+                        </span>
+                        <button type="button" className="t-lock-btn" onClick={() => promoteToFixed(q.id)}>
+                          採用にする
+                        </button>
+                      </>
+                    ) : null}
+                    <span className="t-move-btns">
+                      <button type="button" disabled={index === 0} onClick={() => moveSelected(q.id, -1)} title="上へ">
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        disabled={index === selectedQuestions.length - 1}
+                        onClick={() => moveSelected(q.id, 1)}
+                        title="下へ"
+                      >
+                        ▼
+                      </button>
+                    </span>
+                    <button type="button" className="t-remove-btn" onClick={() => toggleSelect(q.id)} title="選択から外す">
+                      ✕
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        )}
       </div>
 
       <div className="t-main">

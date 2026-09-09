@@ -226,16 +226,16 @@ describe('assignColumns', () => {
     expect(columns).toEqual([[wide]]);
   });
 
-  it('packs as many narrow questions into a column as fit within usableHeight (next-fit decreasing)', () => {
+  it('packs narrow questions into a column in input order, starting a new column once it overflows (next-fit)', () => {
     const q50 = mkQuestion('a', '50');
     const q40 = mkQuestion('b', '40');
     const q30 = mkQuestion('c', '30');
     const q20 = mkQuestion('d', '20');
-    // 降順: 50,40,30,20 -> 列1: 50+40=90(収まる、+30なら120で溢れる) 列2: 30+20=50
+    // 入力順(30,50,20,40)のまま詰める -> 列1: 30+50+20=100(収まる、+40なら140で溢れる) 列2: 40
     const { columns } = assignColumns([q30, q50, q20, q40], measureHeight, 2, { usableHeight: 100, rowGap: 0 });
     expect(columns).toEqual([
-      [q50, q40],
-      [q30, q20],
+      [q30, q50, q20],
+      [q40],
     ]);
   });
 
@@ -247,12 +247,12 @@ describe('assignColumns', () => {
     expect(columns).toEqual([[q50], [q40]]);
   });
 
-  it('allows more than two narrow questions in a single column when they fit', () => {
+  it('allows more than two narrow questions in a single column when they fit, keeping input order', () => {
     const q10 = mkQuestion('a', '10');
     const q20 = mkQuestion('b', '20');
     const q15 = mkQuestion('c', '15');
     const { columns } = assignColumns([q10, q20, q15], measureHeight, 2, { usableHeight: 100, rowGap: 0 });
-    expect(columns).toEqual([[q20, q15, q10]]);
+    expect(columns).toEqual([[q10, q20, q15]]);
   });
 
   it('gives a narrow question taller than usableHeight its own column as a best effort', () => {
