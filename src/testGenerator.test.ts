@@ -167,6 +167,56 @@ describe('selectQuestions: insufficient candidates', () => {
   });
 });
 
+describe('selectQuestions: preSelected (手動固定+自動補完)', () => {
+  it('bypasses the learned-kanji rule for preSelected questions', () => {
+    const preSelected = [mkQuestion('exam', '違')]; // 学年カリキュラム外の漢字、learnedKanjiには含まれない
+    const result = selectQuestions([], new Set(), 1, new Map(), { ...BASE_SETTINGS, questionsPerTest: 1 }, preSelected);
+    expect(result.selected).toEqual(preSelected);
+  });
+
+  it('reduces the auto-fill budget by the weight of preSelected questions', () => {
+    const currentChars = GRADE_KANJI[3].slice(0, 12);
+    const questions = currentChars.map((ch, i) => mkQuestion(`c${i}`, ch));
+    const learned = new Set(GRADE_KANJI[3]);
+    const preSelected = [mkQuestion('pre', '違', 2)];
+    const settings: Settings = { ...BASE_SETTINGS, questionsPerTest: 5, reviewRatio: 0 };
+
+    const result = selectQuestions(questions, learned, 3, new Map(), settings, preSelected);
+
+    expect(result.warnings).toEqual([]);
+    const totalWeight = result.selected.reduce((sum, q) => sum + q.weight, 0);
+    expect(totalWeight).toBe(5); // preSelected(2) + 自動補完(3)
+    expect(result.selected.some(q => q.id === 'pre')).toBe(true);
+    expect(result.selected.filter(q => q.id !== 'pre')).toHaveLength(3);
+  });
+
+  it('avoids auto-selecting a question that conflicts with preSelected (ルール2)', () => {
+    const preSelected = [mkQuestion('pre1', '字')]; // 本文(body)に「字」を含む
+    const questions = [
+      mkQuestion('bad', '<字>[じ]'), // 出題対象(target)が preSelected の本文と重複 → 除外されるはず
+      mkQuestion('good', '<方>[かた]'),
+    ];
+    const learned = new Set(['字', '方']);
+    const settings: Settings = { ...BASE_SETTINGS, questionsPerTest: 2 };
+
+    const result = selectQuestions(questions, learned, 1, new Map(), settings, preSelected);
+
+    expect(result.selected.map(q => q.id).sort()).toEqual(['good', 'pre1']);
+  });
+
+  it('keeps preSelected as-is and warns when its weight exceeds questionsPerTest, without auto-filling', () => {
+    const preSelected = [mkQuestion('p1', '一', 2), mkQuestion('p2', '二', 2)]; // 重み合計4
+    const questions = [mkQuestion('extra', '三')];
+    const learned = new Set(['一', '二', '三']);
+    const settings: Settings = { ...BASE_SETTINGS, questionsPerTest: 3 };
+
+    const result = selectQuestions(questions, learned, 1, new Map(), settings, preSelected);
+
+    expect(result.selected.map(q => q.id).sort()).toEqual(['p1', 'p2']);
+    expect(result.warnings.some(w => w.includes('超えています'))).toBe(true);
+  });
+});
+
 describe('assignColumns', () => {
   const measureHeight = (text: string) => Number(text);
 

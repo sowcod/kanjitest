@@ -33,6 +33,7 @@ export function TestGenerationPage() {
 
   const [manualSelectionIds, setManualSelectionIds] = useState<Set<string>>(new Set());
   const [generatedQuestionOverrides, setGeneratedQuestionOverrides] = useState<Map<string, string>>(new Map());
+  const [lastAutoSelectedIds, setLastAutoSelectedIds] = useState<Set<string>>(new Set());
   const [warnings, setWarnings] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -114,6 +115,12 @@ export function TestGenerationPage() {
       else next.add(id);
       return next;
     });
+    setLastAutoSelectedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }
 
   function generate() {
@@ -126,15 +133,22 @@ export function TestGenerationPage() {
     const sourceQuestions = allQuestions.filter((q) => activeIds.includes(q.datasetId));
     const recentUses = countRecentUses(currentSettings.recentHistoryCount);
 
+    const byId = new Map(allQuestions.map((q) => [q.id, q]));
+    const preSelected = [...manualSelectionIds]
+      .map((id) => byId.get(id))
+      .filter((q): q is Question => q !== undefined);
+
     const { selected, warnings: nextWarnings } = selectQuestions(
       sourceQuestions,
       learnedSet,
       learnedState.currentGrade,
       recentUses,
       currentSettings,
+      preSelected,
     );
     setWarnings(nextWarnings);
     setManualSelectionIds(new Set(selected.map((q) => q.id)));
+    setLastAutoSelectedIds(new Set(selected.filter((q) => !manualSelectionIds.has(q.id)).map((q) => q.id)));
     setGeneratedQuestionOverrides(
       new Map(
         currentSettings.promoteAdjacentWriteKanji
@@ -146,6 +160,7 @@ export function TestGenerationPage() {
 
   function clearSelection() {
     setManualSelectionIds(new Set());
+    setLastAutoSelectedIds(new Set());
     setGeneratedQuestionOverrides(new Map());
     setWarnings([]);
   }
@@ -268,6 +283,11 @@ export function TestGenerationPage() {
                   >
                     {grade ? `${grade}年` : '―'}
                   </span>
+                  {lastAutoSelectedIds.has(q.id) ? (
+                    <span className="badge auto-badge" title="直前のランダム生成で自動追加された問題">
+                      自動
+                    </span>
+                  ) : null}
                 </li>
               );
             })

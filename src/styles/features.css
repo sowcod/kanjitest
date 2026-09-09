@@ -432,6 +432,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.t-select-list li .badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.t-select-list li .badge.grade-badge {
+  color: #065f46;
+  background: #d1fae5;
+}
+.t-select-list li .badge.grade-badge.grade-unknown {
+  color: #9ca3af;
+  background: #f3f4f6;
+}
+.t-select-list li .badge.auto-badge {
+  color: #7c3aed;
+  background: #ede9fe;
+}
 .t-select-list li:hover { background: #f9fafb; }
 .t-select-list li.selected { background: #dbeafe; }
 .t-select-list .q-empty {

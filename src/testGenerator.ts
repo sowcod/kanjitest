@@ -138,6 +138,10 @@ function fillGreedy(
  * 3. 残り予算を現学年プールと下位学年プールに分け、下位学年を `reviewRatio` の割合で混ぜる
  * 4. 出題対象漢字が他の問題の文中に出てこないよう重複を避けつつ選出する（ルール2, できるだけ）
  * 5. 重複を避けきれない／問題が足りない場合は警告を返しつつベストエフォートで選出する
+ *
+ * `preSelected` はユーザーが生成前に手動で固定した問題（受験対策など学年カリキュラム外の
+ * データセットを意図的に混ぜたい場合など）。ルール1（習った漢字の範囲内）は適用されず、
+ * その重み分だけ `questionsPerTest` の予算から差し引いた上で残りを自動選出する。
  */
 export function selectQuestions(
   questions: Question[],
@@ -145,16 +149,33 @@ export function selectQuestions(
   currentGrade: Grade,
   recentUses: Map<string, number>,
   settings: Settings,
+  preSelected: Question[] = [],
 ): SelectionResult {
   const warnings: string[] = [];
-  const eligible = questions.filter(q => isSubset(allKanji(q.text), learnedKanji));
+  const preSelectedIds = new Set(preSelected.map(q => q.id));
+  // preSelected（ユーザーが生成前に手動で固定した問題）にはルール1を適用しない。
+  // 受験対策など学年カリキュラム外のデータセットを意図的に混ぜたい場合を想定している。
+  const eligible = questions.filter(
+    q => !preSelectedIds.has(q.id) && isSubset(allKanji(q.text), learnedKanji),
+  );
 
-  if (eligible.length === 0) {
-    warnings.push('習った漢字の範囲内で使える問題がありません。問題を登録してください。');
-    return { selected: [], warnings };
+  const preSelectedWeight = preSelected.reduce((sum, q) => sum + q.weight, 0);
+  const total = Math.max(0, settings.questionsPerTest - preSelectedWeight);
+
+  if (preSelectedWeight > settings.questionsPerTest) {
+    warnings.push(
+      `固定された問題の重み合計(${preSelectedWeight})が1回のテストの問題数(${settings.questionsPerTest})を超えています。自動選出は行いません。`,
+    );
+  } else if (total === 0) {
+    warnings.push(`すでに${settings.questionsPerTest}問分選択済みのため、自動生成による追加はありません。`);
   }
 
-  const total = settings.questionsPerTest;
+  if (eligible.length === 0) {
+    if (total > 0) {
+      warnings.push('習った漢字の範囲内で使える問題がありません。問題を登録してください。');
+    }
+    return { selected: [...preSelected], warnings };
+  }
 
   // ── 出題タイプ（読み／送り仮名）のニッチ枠を先に確保する ──
   // readRatio/okuriganaRatio が既定値0の場合、以降の nicheUsed は常に0になり、
@@ -175,7 +196,7 @@ export function selectQuestions(
   const okuriganaTarget = Math.round(total * settings.okuriganaRatio);
   const readTarget = Math.round(total * settings.readRatio);
 
-  const nicheStep1 = fillGreedy(okuriganaPool, [], okuriganaTarget, true);
+  const nicheStep1 = fillGreedy(okuriganaPool, preSelected, okuriganaTarget, true);
   // 送り仮名枠が埋まらなかった分は読み枠に繰り越す
   const nicheStep2 = fillGreedy(readPool, nicheStep1.selected, readTarget + nicheStep1.remainingWeight, true);
   const nicheUsed = okuriganaTarget + readTarget - nicheStep2.remainingWeight;
