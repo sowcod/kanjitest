@@ -35,6 +35,7 @@ export function HistoryPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [detailWarnings, setDetailWarnings] = useState<string[]>([]);
   const [detailColumns, setDetailColumns] = useState<Question[][] | null>(null);
+  const [detailQuestionIds, setDetailQuestionIds] = useState<string[] | null>(null);
   const [reprintBusy, setReprintBusy] = useState(false);
   const [reprintError, setReprintError] = useState<string | null>(null);
 
@@ -44,6 +45,7 @@ export function HistoryPage() {
   useEffect(() => {
     if (!selectedEntry) {
       setDetailColumns(null);
+      setDetailQuestionIds(null);
       setDetailWarnings([]);
       return;
     }
@@ -58,6 +60,8 @@ export function HistoryPage() {
       }
       if (cancelled) return;
       setDetailWarnings(missingCount > 0 ? [`${missingCount}問は削除済みのため表示できません。`] : []);
+      // レイアウト後(列詰め)の順序ではなく、履歴に記録されていた元の出題順を再印刷用に保持する。
+      setDetailQuestionIds(found.length === 0 ? null : found.map((q) => q.id));
       setDetailColumns(
         found.length === 0
           ? null
@@ -91,11 +95,10 @@ export function HistoryPage() {
     return () => ro.disconnect();
   }, [detailColumns]);
 
-  function doDelete(date: string) {
-    deleteHistoryEntry(date);
+  async function doDelete(date: string) {
+    await deleteHistoryEntry(date);
     if (selectedDate === date) setSelectedDate(null);
     setModal({ kind: 'none' });
-    history.reload();
   }
 
   async function reprint() {
@@ -103,13 +106,12 @@ export function HistoryPage() {
     setReprintBusy(true);
     setReprintError(null);
     try {
-      const ids = detailColumns.flat().map((q) => q.id);
-      const entry = recordTest(ids);
+      const ids = detailQuestionIds ?? [];
+      const entry = await recordTest(ids);
       const label = formatTestLabel(entry.date);
       const { generateTestPdf, openPdfInNewTab } = await import('../../pdfExport');
       const bytes = await generateTestPdf(detailColumns, FONT_NAME, label);
       openPdfInNewTab(bytes);
-      history.reload();
     } catch (e) {
       setReprintError(`PDFの生成に失敗しました: ${String(e)}`);
     } finally {
@@ -182,7 +184,7 @@ export function HistoryPage() {
         message={modal.kind === 'confirmDelete' ? `${formatTestLabel(modal.date)}の履歴を削除しますか？` : ''}
         danger
         onConfirm={() => {
-          if (modal.kind === 'confirmDelete') doDelete(modal.date);
+          if (modal.kind === 'confirmDelete') void doDelete(modal.date);
         }}
         onCancel={() => setModal({ kind: 'none' })}
       />

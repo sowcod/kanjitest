@@ -2,6 +2,7 @@ import { useDeferredValue, useMemo, useRef, useState } from 'react';
 import { Notice } from '../../components/Notice';
 import { QuestionLabel } from '../../components/QuestionLabel';
 import { useDatasets } from '../../hooks/useDatasets';
+import { useHistory } from '../../hooks/useHistory';
 import { useQuestions } from '../../hooks/useQuestions';
 import { useSettings } from '../../hooks/useSettings';
 import { computeLearnedKanjiSet, loadLearnedKanjiState } from '../../learnedKanjiStore';
@@ -29,6 +30,7 @@ function matchesQuestionSearch(q: Question, query: string): boolean {
 export function TestGenerationPage() {
   const datasetsRes = useDatasets();
   const questionsRes = useQuestions();
+  const historyRes = useHistory();
   const { settings, updateSettings } = useSettings();
 
   const [manualSelectionIds, setManualSelectionIds] = useState<Set<string>>(new Set());
@@ -132,7 +134,7 @@ export function TestGenerationPage() {
     const activeIds =
       currentSettings.sourceDatasetIds.length > 0 ? currentSettings.sourceDatasetIds : datasets.map((d) => d.id);
     const sourceQuestions = allQuestions.filter((q) => activeIds.includes(q.datasetId));
-    const recentUses = countRecentUses(currentSettings.recentHistoryCount);
+    const recentUses = countRecentUses(historyRes.data ?? [], currentSettings.recentHistoryCount);
 
     const byId = new Map(allQuestions.map((q) => [q.id, q]));
     // 直前の自動生成で追加された分(lastAutoSelectedIds)は固定せず、次の抽選対象に含める。
@@ -194,8 +196,8 @@ export function TestGenerationPage() {
     setPdfBusy(true);
     setPdfError(null);
     try {
-      const ids = currentColumns.flat().map((q) => q.id);
-      const entry = recordTest(ids);
+      const ids = selectedQuestions.map((q) => q.id);
+      const entry = await recordTest(ids);
       const label = formatTestLabel(entry.date);
       const { generateTestPdf, openPdfInNewTab } = await import('../../pdfExport');
       const bytes = await generateTestPdf(currentColumns, FONT_NAME, label);
