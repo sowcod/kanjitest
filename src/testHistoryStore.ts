@@ -134,16 +134,6 @@ function ensureLoaded(): void {
   });
 }
 
-// タブがバックグラウンドから復帰したらキャッシュを破棄する(datasetStore と同様。
-// 他タブ/スプレッドシート直接編集などの取りこぼしに気付けるようにするため)。
-if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible' || history === null) return;
-    history = null;
-    notify();
-  });
-}
-
 // ────────────────────────────────────────────────────────────
 // React 用の購読API(useSyncExternalStore から使う)
 // ────────────────────────────────────────────────────────────

@@ -161,18 +161,6 @@ function ensureLoaded(): void {
   });
 }
 
-// タブがバックグラウンドから復帰したらキャッシュを破棄する(questionStore と同様。
-// 他タブ/スプレッドシート直接編集などの取りこぼしに気付けるようにするため)。
-// データセットは pending な同期状態を持たないため、questionStore のような
-// 「未確定行がある間は破棄を見送る」ガードは不要。
-if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible' || datasets === null) return;
-    datasets = null;
-    notify();
-  });
-}
-
 // ────────────────────────────────────────────────────────────
 // React 用の購読API(useSyncExternalStore から使う)
 // ────────────────────────────────────────────────────────────

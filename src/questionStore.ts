@@ -232,20 +232,6 @@ async function loadAll(): Promise<Row[]> {
   return loadPromise ?? startLoad();
 }
 
-// タブがバックグラウンドから復帰したら、他タブ/スプレッドシート直接編集などの
-// 取りこぼしに気付けるようキャッシュを破棄する(次回参照時に再取得される)。
-// ただし pending/failed な行や未確定の行がある間は、破棄すると進行中の同期状態を
-// 画面から見失ってしまうため復帰時の破棄を見送る(次に安全なタイミングで破棄される)。
-if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible' || rows === null) return;
-    const hasUnsynced = rows.some((r) => r.sync.phase !== 'synced' || !r.confirmed);
-    if (hasUnsynced) return;
-    rows = null;
-    notify();
-  });
-}
-
 // ────────────────────────────────────────────────────────────
 // React 用の購読API(useSyncExternalStore から使う)
 // ────────────────────────────────────────────────────────────
